@@ -15,6 +15,12 @@ interface TemplateDao {
     @Query("SELECT COUNT(*) FROM templates")
     suspend fun count(): Int
 
+    @Query("SELECT * FROM templates WHERE title = :title LIMIT 1")
+    suspend fun findByTitle(title: String): Template?
+
+    @Query("SELECT * FROM templates ORDER BY sortOrder ASC, id ASC")
+    suspend fun getAll(): List<Template>
+
     @Insert
     suspend fun insert(template: Template): Long
 
@@ -33,11 +39,18 @@ interface RecentDao {
     @Query("SELECT * FROM recents ORDER BY timestamp DESC")
     fun observeAll(): Flow<List<Recent>>
 
+    /** v2 micro-fix (founder's v1.0 phone test): search matches the
+     *  template title too — searching "order" must find the entry that
+     *  used the "Order confirm" template, not just labels/numbers. */
     @Query(
         "SELECT * FROM recents WHERE label LIKE '%' || :query || '%' " +
-            "OR numberE164 LIKE '%' || :query || '%' ORDER BY timestamp DESC"
+            "OR numberE164 LIKE '%' || :query || '%' " +
+            "OR templateTitle LIKE '%' || :query || '%' ORDER BY timestamp DESC"
     )
     fun observeFiltered(query: String): Flow<List<Recent>>
+
+    @Query("SELECT * FROM recents WHERE numberE164 = :number LIMIT 1")
+    suspend fun getByNumber(number: String): Recent?
 
     /** Insert-or-replace on the number primary key = the duplicate rule. */
     @Insert(onConflict = OnConflictStrategy.REPLACE)

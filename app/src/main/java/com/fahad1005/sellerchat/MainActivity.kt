@@ -20,6 +20,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleSendIntent(intent)
+        handleFollowUpIntent(intent)
         setContent {
             SellerChatTheme {
                 Surface(
@@ -36,6 +37,23 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleSendIntent(intent)
+        handleFollowUpIntent(intent)
+    }
+
+    /** Follow-up notification deep link (v2): the notification carries
+     *  the customer's number + app; tapping it opens that chat
+     *  directly. The extras are consumed so a later resume doesn't
+     *  re-fire the chat. */
+    private fun handleFollowUpIntent(intent: Intent?) {
+        val number = intent?.getStringExtra(
+            com.fahad1005.sellerchat.notify.FollowUps.EXTRA_OPEN_CHAT_NUMBER
+        ) ?: return
+        val pkg = intent.getStringExtra(
+            com.fahad1005.sellerchat.notify.FollowUps.EXTRA_OPEN_CHAT_PACKAGE
+        ) ?: com.fahad1005.sellerchat.viewmodel.WhatsAppPackages.WHATSAPP
+        intent.removeExtra(com.fahad1005.sellerchat.notify.FollowUps.EXTRA_OPEN_CHAT_NUMBER)
+        intent.removeExtra(com.fahad1005.sellerchat.notify.FollowUps.EXTRA_OPEN_CHAT_PACKAGE)
+        vm.openChat(pkg, number, "")
     }
 
     /** ACTION_SEND growth path: shared text containing a phone number

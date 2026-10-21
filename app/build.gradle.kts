@@ -23,8 +23,12 @@ android {
         applicationId = "com.fahad1005.sellerchat"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        // NOTE: v1.0 shipped three CI builds (1.0 / 1.0.1 / 1.0.2 =
+        // versionCode 3), so v2.0 must be versionCode 4 to install
+        // OVER the build on the founder's phone (Android refuses a
+        // lower or equal code). versionName is "2.0" per spec.
+        versionCode = 4
+        versionName = "2.0"
     }
 
     signingConfigs {
@@ -102,6 +106,11 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    // Follow-up reminders (v2 spec §0/§4): WorkManager is the sanctioned
+    // scheduling cost — a reliable 2-day reminder without any permission
+    // beyond the in-context POST_NOTIFICATIONS ask.
+    implementation(libs.work.runtime.ktx)
 
     // Ads: exactly ONE banner on the Home screen. Sample IDs until Fahad adds
     // his own (see README). TODO(FAHAD): replace with real AdMob IDs.

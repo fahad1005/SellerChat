@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [Template::class, Recent::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,7 +24,12 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "sellerchat.db"
-                ).build().also { instance = it }
+                )
+                    // v1 → v2 is ALTER-only and non-destructive (see
+                    // Migrations.kt): a v1 user's data MUST survive the
+                    // update, so no destructive fallback is registered.
+                    .addMigrations(MIGRATION_1_2)
+                    .build().also { instance = it }
             }
         }
     }

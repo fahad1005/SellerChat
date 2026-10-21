@@ -51,7 +51,9 @@ import com.fahad1005.sellerchat.data.Template
 import com.fahad1005.sellerchat.data.TemplateLanguage
 import com.fahad1005.sellerchat.ui.components.AdBanner
 import com.fahad1005.sellerchat.ui.components.CountryPickerDialog
+import com.fahad1005.sellerchat.ui.components.NastaliqUrduFontFamily
 import com.fahad1005.sellerchat.ui.components.TemplateBodyText
+import com.fahad1005.sellerchat.ui.components.usesNastaliq
 import com.fahad1005.sellerchat.util.PhoneUtils
 import com.fahad1005.sellerchat.viewmodel.MainViewModel
 import com.fahad1005.sellerchat.viewmodel.WhatsAppPackages
@@ -81,6 +83,16 @@ fun HomeScreen(
     var previewTemplate by remember { mutableStateOf<Template?>(null) }
     var failedOtherApp by remember { mutableStateOf<String?>(null) }
     var showFailedDialog by remember { mutableStateOf(false) }
+    // One-time tooltip (v2 spec §2A): persisted flag, shown exactly once.
+    var showTooltip by remember { mutableStateOf(!vm.settings.homeTooltipShown) }
+
+    // Preferred language first (v2 spec §3A): a stable sort, so the
+    // seller's language leads the chip row and the rest keep DB order.
+    val preferredLanguage = vm.settings.preferredTemplateLanguage
+    val sortedTemplates = remember(templates, preferredLanguage) {
+        if (preferredLanguage == null) templates
+        else templates.sortedBy { if (it.language == preferredLanguage) 0 else 1 }
+    }
 
     fun normalizedOrError(): String? {
         val e164 = PhoneUtils.normalize(number, country)
@@ -115,6 +127,29 @@ fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // ---- One-time tooltip: the whole app in one line, once ----
+        if (showTooltip) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)
+                ) {
+                    Text(
+                        text = "Paste a number → Pick a template → Open Chat.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(top = 6.dp)
+                    )
+                    IconButton(onClick = {
+                        showTooltip = false
+                        vm.settings.homeTooltipShown = true
+                    }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Dismiss tip")
+                    }
+                }
+            }
+        }
+
         // ---- Number row: country selector + field (paste / clear inside) ----
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -213,17 +248,8 @@ fun HomeScreen(
             }
         }
 
-        // ---- Optional label ----
-        OutlinedTextField(
-            value = label,
-            onValueChange = { vm.homeLabel.value = it },
-            label = { Text("Customer label (optional)") },
-            placeholder = { Text("Ayesha — kurta order") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // ---- Template chips ----
+        // ---- Template chips (moved UP in v2, spec §2B: sellers see
+        // their replies before anything optional) ----
         Text(text = "Reply template", style = MaterialTheme.typography.titleSmall)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             item {
@@ -234,15 +260,26 @@ fun HomeScreen(
                     onLongClick = null
                 )
             }
-            items(templates, key = { it.id }) { template ->
+            items(sortedTemplates, key = { it.id }) { template ->
                 TemplateChip(
                     text = template.title,
                     selected = selectedTemplateId == template.id,
                     onClick = { vm.selectedTemplateId.value = template.id },
-                    onLongClick = { previewTemplate = template }
+                    onLongClick = { previewTemplate = template },
+                    language = template.language
                 )
             }
         }
+
+        // ---- Optional label (moved DOWN in v2, spec §2B) ----
+        OutlinedTextField(
+            value = label,
+            onValueChange = { vm.homeLabel.value = it },
+            label = { Text("Customer label (optional)") },
+            placeholder = { Text("Ayesha — kurta order") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
 
         // ---- Primary CTA ----
         Button(
@@ -364,7 +401,8 @@ private fun TemplateChip(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)?
+    onLongClick: (() -> Unit)?,
+    language: TemplateLanguage? = null
 ) {
     Surface(
         shape = RoundedCornerShape(50),
@@ -376,7 +414,12 @@ private fun TemplateChip(
     ) {
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge,
+            style = if (language != null && usesNastaliq(language)) {
+                // Urdu template titles chip in Nastaliq too (spec §3B).
+                MaterialTheme.typography.labelLarge.copy(fontFamily = NastaliqUrduFontFamily)
+            } else {
+                MaterialTheme.typography.labelLarge
+            },
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
         )
     }

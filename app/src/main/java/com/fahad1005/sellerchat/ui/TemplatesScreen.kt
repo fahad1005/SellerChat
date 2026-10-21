@@ -1,6 +1,7 @@
 package com.fahad1005.sellerchat.ui
 
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,12 +48,38 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.fahad1005.sellerchat.data.Template
 import com.fahad1005.sellerchat.data.TemplateLanguage
+import com.fahad1005.sellerchat.data.TemplatePurpose
+import com.fahad1005.sellerchat.ui.components.NastaliqUrduFontFamily
 import com.fahad1005.sellerchat.ui.components.TemplateBodyText
+import com.fahad1005.sellerchat.ui.components.usesNastaliq
 import com.fahad1005.sellerchat.viewmodel.MainViewModel
 import java.util.Collections
+
+/** Display name for the purpose tag (v2 spec §3A: purpose is a tag on
+ *  the row; full grouped sections were deliberately not built). */
+fun purposeLabel(purpose: TemplatePurpose): String = when (purpose) {
+    TemplatePurpose.PRICE -> "Price"
+    TemplatePurpose.ORDER -> "Order"
+    TemplatePurpose.PAYMENT -> "Payment"
+    TemplatePurpose.DELIVERY -> "Delivery"
+    TemplatePurpose.OTHER -> "Other"
+}
+
+/** Filter tabs in display order (null = All). */
+private val languageTabs: List<Pair<String, TemplateLanguage?>> = listOf(
+    "All" to null,
+    "English" to TemplateLanguage.EN,
+    "اردو" to TemplateLanguage.UR,
+    "Roman Urdu" to TemplateLanguage.ROMAN_UR,
+    "Hindi" to TemplateLanguage.HI,
+    "Tamil" to TemplateLanguage.TA,
+    "Telugu" to TemplateLanguage.TE,
+    "Marathi" to TemplateLanguage.MR
+)
 
 private sealed interface EditorTarget {
     data object New : EditorTarget
@@ -124,17 +151,14 @@ fun TemplatesScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Language filter tabs
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterTab("All", languageFilter == null) { languageFilter = null }
-            FilterTab("English", languageFilter == TemplateLanguage.EN) {
-                languageFilter = TemplateLanguage.EN
-            }
-            FilterTab("اردو", languageFilter == TemplateLanguage.UR) {
-                languageFilter = TemplateLanguage.UR
-            }
-            FilterTab("Roman Urdu", languageFilter == TemplateLanguage.ROMAN_UR) {
-                languageFilter = TemplateLanguage.ROMAN_UR
+        // Language filter tabs (v2: 6 template languages + All). The row
+        // scrolls horizontally — eight tabs no longer fit one line.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            for ((label, lang) in languageTabs) {
+                FilterTab(label, languageFilter == lang) { languageFilter = lang }
             }
         }
         if (reorderEnabled) {
@@ -207,6 +231,12 @@ fun TemplatesScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(template.title, style = MaterialTheme.typography.titleMedium)
+                            // Purpose tag (v2 spec §3A).
+                            Text(
+                                text = purposeLabel(template.purpose),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                             TemplateBodyText(
                                 body = template.body,
                                 language = template.language,
@@ -324,11 +354,12 @@ private fun TemplateEditor(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterTab("English", language == TemplateLanguage.EN) { language = TemplateLanguage.EN }
-            FilterTab("اردو", language == TemplateLanguage.UR) { language = TemplateLanguage.UR }
-            FilterTab("Roman Urdu", language == TemplateLanguage.ROMAN_UR) {
-                language = TemplateLanguage.ROMAN_UR
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            for ((label, lang) in languageTabs.drop(1)) {
+                FilterTab(label, language == lang) { if (lang != null) language = lang }
             }
         }
 
@@ -337,11 +368,29 @@ private fun TemplateEditor(
             onValueChange = { bodyValue = it },
             label = { Text("Message") },
             minLines = 4,
+            // Urdu bodies edit in Nastaliq + strict RTL (spec §3B);
+            // other scripts keep the system font and LTR.
+            textStyle = if (usesNastaliq(language)) {
+                androidx.compose.ui.text.TextStyle(
+                    fontFamily = NastaliqUrduFontFamily,
+                    textDirection = androidx.compose.ui.text.style.TextDirection.Rtl,
+                    lineHeight = 30.sp
+                )
+            } else {
+                androidx.compose.ui.text.TextStyle()
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         // Placeholder helpers: tap to insert at the cursor.
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // v2 micro-fix (founder's v1.0 phone test): this row used to
+        // overflow and clip the {qty} button at the right edge — it
+        // now scrolls horizontally so all four are always fully
+        // visible and tappable.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
             for (ph in listOf("{name}", "{price}", "{item}", "{qty}")) {
                 OutlinedButton(onClick = { insertPlaceholder(ph) }) { Text(ph) }
             }

@@ -18,6 +18,14 @@
 -keep class com.google.android.gms.ads.** { *; }
 -dontwarn com.google.android.gms.**
 
+# WorkManager (v2): workers are instantiated reflectively by class name
+# from WorkManager's database. work-runtime ships consumer rules for
+# this; keep our worker explicitly anyway — a shrunk-away worker would
+# fail silently (the follow-up would simply never fire).
+-keep class com.fahad1005.sellerchat.notify.FollowUpWorker {
+    <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+
 # Kotlin coroutines (library rules cover most; keep the main dispatcher glue).
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}

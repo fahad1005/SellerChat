@@ -2,11 +2,21 @@
 
 **Message any customer on WhatsApp or WhatsApp Business — with your price and order reply already typed.**
 
-One screen: paste a number → pick WhatsApp / WhatsApp Business → the chat opens with your chosen template already in the message box. Plus labeled recents, reusable templates in English / اردو / Roman Urdu, a wa.me link + QR generator, and a one-tap "share my link to my status".
+One screen: paste a number → pick WhatsApp / WhatsApp Business → the chat opens with your chosen template already in the message box. Plus labeled recents, reusable templates in English / اردو / Roman Urdu / Hindi / Tamil / Telugu / Marathi, a wa.me link + QR generator, and a one-tap "share my link to my status".
 
-Built for small online sellers in Pakistan, India, Bangladesh, the UAE and Nigeria. **Zero runtime permissions. No account, no cloud, no backend. All data stays on the phone.** One AdMob banner on the Home screen only — never in the chat flow.
+Built for small online sellers in Pakistan, India, Bangladesh, the UAE and Nigeria. **No account, no cloud, no backend. All data stays on the phone.** Nothing is asked at launch; the only permission prompt in the app appears if *you* tap "Follow-up in 2 days" on a customer (notifications, Android 13+ — and the reminder still saves in-app if you decline). One AdMob banner on the Home screen only — never in the chat flow.
 
 Package: `com.fahad1005.sellerchat` · Min SDK 24 · Target SDK 35 · Kotlin + Jetpack Compose (Material 3)
+
+## What's new in v2.0
+
+- **Try Demo** on the first-run screen: one tap opens WhatsApp with a sample number + the price reply, before any setup.
+- **Recents is now a mini-CRM.** Every customer gets a status chip (Inquiry → Ordered → Paid → Shipped, tap to cycle), a waiting clock ("Waiting 3h 20m", orange under a day, red after), a pinned memo, and a row-tap action sheet: Open Chat / Follow-up in 2 days / Add Memo / Mark Paid. Marking Paid optionally records the amount.
+- **Pulse dashboard** at the top of Recents: `Leads: N | Waiting: N | Paid: N | This Week: Rs 12,500` — with your currency symbol and Indian digit grouping when your country is India.
+- **Follow-up reminders** via WorkManager + a notification that deep-links straight into that customer's chat. The notification permission is asked in-context only, never at launch.
+- **12 new templates**: Hinglish (Hindi) price/payment/delivery, plus Tamil, Telugu and Marathi versions — 24 seed templates in 7 languages. Urdu-script templates now render in a bundled, subsetted **Noto Nastaliq Urdu** font with proper RTL.
+- **Smarter Home:** template chips moved above the label field, a one-time tip banner, a Preferred Template Language setting (your language's chips come first), and a Default Template that can no longer be "No template".
+- **v1 data survives:** the Room 1→2 migration is ALTER-only — templates, recents and labels carry over untouched.
 
 ---
 
@@ -48,6 +58,8 @@ The 12 first-launch templates live in one file:
 
 Edit the `title` / `body` / `language` of any entry, or add new ones (keep `sortOrder` increasing). Placeholders `{name}`, `{price}`, `{item}`, `{qty}` are substituted when a chat is opened — `{name}` becomes the customer label, the rest are blanked so a raw placeholder never reaches a customer. Note: seeds are inserted only when the templates table is empty (first install); changing seeds does not rewrite templates on phones that already ran the app — users can edit/delete every seeded template in the app itself.
 
+The 12 v2 templates live in the same file (`v2Templates()`): they are inserted exactly once per install — fresh installs *and* v1 upgraders — behind the persisted `seedsV2Done` flag, appended after the existing library. The Tamil / Telugu / Marathi bodies are AI drafts pending native-speaker review (see BUILD_NOTES.md); the 3 Hinglish bodies are verbatim from the product spec.
+
 ## Verify the size budget (release < 5 MB)
 
 The release budget is a hard product constraint. CI prints a size report on every build (Actions → the run → "Report APK sizes"). To verify locally:
@@ -64,12 +76,14 @@ How the budget is kept — every dependency justified:
 | Jetpack Compose + Material 3 (BOM 2024.12.01) | The UI itself. R8 full mode + resource shrinking strip everything unused. |
 | material-icons-**core** only | The *-extended* icon pack is megabytes of vectors. Missing glyphs (QR, chat bubble) ship as two tiny local vector drawables instead. |
 | Room (runtime + ktx + compiler) | Templates + recents need ordered, searchable, durable local storage; Room is the smallest *safe* way to do that in Kotlin. |
+| WorkManager (work-runtime-ktx 2.9.1) — **v2** | Follow-up reminders that survive reboot and Doze without an exact-alarm permission. The sanctioned scheduling cost (~200–400 KB after R8); the only new dependency in v2. |
+| Subsetted Noto Nastaliq Urdu font — **v2** | Urdu-script templates render in real Nastaliq instead of the system fallback. Subsetted with fonttools to the Arabic blocks + Latin/digits, static weight 400, no hinting: 899,288 bytes raw in `res/font/` (deflate-compressed inside the APK), vs 1,033,544 bytes for the unsubsetted static font. Hindi/Marathi/Tamil/Telugu use system fonts — no other font is bundled. |
 | play-services-ads 23.6.0 | The single Home banner. The largest single line item; accepted because ads are the v1 business model. No other Google services (no Firebase, no Analytics) are included. |
 | ZXing **core** 3.5.3 | QR *generation* only (~500 KB pre-shrink, much less after R8). The android-embedded/camera variants were rejected — no scanning is needed. |
 | core-ktx, activity-compose, lifecycle | Small AndroidX glue required by Compose/ViewModel. |
-| Nothing else | No DI framework, no navigation library (in-app state routing), no image loaders, no networking stack, no custom fonts, no DataStore (SharedPreferences covers settings at zero dependency cost). |
+| Nothing else | No DI framework, no navigation library (in-app state routing), no image loaders, no networking stack, no DataStore (SharedPreferences covers settings at zero dependency cost). |
 
-Release config doing the work: `isMinifyEnabled = true` (R8 full mode via `android.enableR8.fullMode=true`), `isShrinkResources = true`, vector drawables only, system fonts only.
+Release config doing the work: `isMinifyEnabled = true` (R8 full mode via `android.enableR8.fullMode=true`), `isShrinkResources = true`, vector drawables only, one subsetted font (Urdu script only).
 
 ## Project layout
 
@@ -77,9 +91,12 @@ Release config doing the work: `isMinifyEnabled = true` (R8 full mode via `andro
 app/src/main/java/com/fahad1005/sellerchat/
 ├── MainActivity.kt          — entry point, ACTION_SEND pre-fill
 ├── SellerChatApp.kt         — Application, AdMob init
-├── data/                    — Room entities/DAOs/database, seed templates,
-│                              country list, SharedPreferences settings
-├── util/                    — phone normalization, QR generation, time
+├── data/                    — Room entities/DAOs/database (+ the 1→2
+│                              migration), seed templates, country list,
+│                              SharedPreferences settings
+├── notify/                  — follow-up reminders (WorkManager, v2)
+├── util/                    — phone normalization, QR generation, time,
+│                              currency formatting
 ├── viewmodel/               — MainViewModel (MVVM, no DI framework)
 └── ui/                      — Compose screens in spec order:
                                Home, Recents, Templates, QR, ShareStatus,

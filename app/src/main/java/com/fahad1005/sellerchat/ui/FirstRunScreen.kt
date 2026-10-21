@@ -39,6 +39,7 @@ import com.fahad1005.sellerchat.viewmodel.MainViewModel
 fun FirstRunScreen(vm: MainViewModel, onDone: () -> Unit) {
     val country by vm.selectedCountry.collectAsState()
     var showCountryPicker by remember { mutableStateOf(false) }
+    var demoFailed by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -93,6 +94,23 @@ fun FirstRunScreen(vm: MainViewModel, onDone: () -> Unit) {
         }
 
         Spacer(modifier = Modifier.weight(1f))
+
+        // "Try Demo" (v2 spec §2A): one tap pre-fills a fake number +
+        // the Price Inquiry template and opens WhatsApp, so the user
+        // sees the whole trick before setting anything up.
+        OutlinedButton(
+            onClick = { demoFailed = !vm.tryDemo() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+        ) { Text("Try Demo") }
+        if (demoFailed) {
+            Text(
+                text = "WhatsApp is not installed on this phone — install it, then try the demo.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
 
         Button(
             onClick = onDone,

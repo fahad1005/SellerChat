@@ -2,17 +2,27 @@
 <!--
   SellerChat manifest.
 
-  PERMISSIONS: this app declares ZERO permission elements and requests
-  zero runtime permissions. That is a hard product requirement, not an
-  oversight. The only network user is the AdMob SDK, which brings its own
-  INTERNET permission via manifest merger from the play-services-ads library
-  (standard for every ad-supported app; the app itself declares none).
+  PERMISSIONS (v2): exactly TWO permission elements, neither asked at
+  launch. v1 declared zero; v2 adds precisely the two sanctioned
+  entries below — nothing else, ever:
+  1) POST_NOTIFICATIONS — runtime-granted on Android 13+, requested
+     ONLY in-context when the user taps "Follow-up in 2 days" on a
+     customer (the spec §0 exception). If denied, the reminder still
+     saves in-app. On Android 12 and below it grants automatically.
+  2) AD_ID — declared explicitly so the merged manifest shows it on
+     purpose: the AdMob SDK uses the advertising ID for ad delivery
+     only. (The AdMob library also merges INTERNET for the same
+     reason — standard for every ad-supported app.)
+  No contacts, no storage, no accessibility, no overlays.
 
   The <queries> block below is package VISIBILITY, not a permission: on
   Android 11+ it lets us ask "is WhatsApp / WhatsApp Business installed?"
   and aim an intent at exactly those two packages.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
     <queries>
         <package android:name="com.whatsapp" />
@@ -37,6 +47,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

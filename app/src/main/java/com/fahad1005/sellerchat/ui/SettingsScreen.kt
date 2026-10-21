@@ -37,9 +37,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.fahad1005.sellerchat.BuildConfig
+import com.fahad1005.sellerchat.data.RecentStatus
+import com.fahad1005.sellerchat.data.TemplateLanguage
 import com.fahad1005.sellerchat.ui.components.CountryPickerDialog
 import com.fahad1005.sellerchat.viewmodel.MainViewModel
 import com.fahad1005.sellerchat.viewmodel.WhatsAppPackages
+
+/** Display names for the template languages (UI stays English, §3). */
+fun templateLanguageLabel(language: TemplateLanguage): String = when (language) {
+    TemplateLanguage.EN -> "English"
+    TemplateLanguage.UR -> "Urdu"
+    TemplateLanguage.ROMAN_UR -> "Roman Urdu"
+    TemplateLanguage.HI -> "Hindi"
+    TemplateLanguage.TA -> "Tamil"
+    TemplateLanguage.TE -> "Telugu"
+    TemplateLanguage.MR -> "Marathi"
+}
 
 /** TODO(FAHAD): replace with the real hosted privacy policy URL. */
 private const val PRIVACY_POLICY_URL = "https://example.com/sellerchat/privacy-policy"
@@ -57,6 +70,10 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     var defaultApp by remember { mutableStateOf(vm.settings.defaultAppPackage) }
     var defaultTemplateId by remember { mutableStateOf(vm.settings.defaultTemplateId) }
     var templateMenuOpen by remember { mutableStateOf(false) }
+    var preferredLanguage by remember { mutableStateOf(vm.settings.preferredTemplateLanguage) }
+    var languageMenuOpen by remember { mutableStateOf(false) }
+    var defaultStatus by remember { mutableStateOf(vm.settings.defaultStatus) }
+    var statusMenuOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -119,7 +136,9 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }
             }
 
-            // Default template
+            // Default template (v2 spec §2B: the default may NOT be
+            // "No template" — the picker no longer offers it; per-send
+            // "No template" on Home is unaffected.)
             Text("Default template", style = MaterialTheme.typography.titleSmall)
             Column {
                 OutlinedButton(
@@ -128,7 +147,7 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 ) {
                     Text(
                         text = templates.firstOrNull { it.id == defaultTemplateId }?.title
-                            ?: "No template"
+                            ?: "Choose a template"
                     )
                     Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
                 }
@@ -136,15 +155,6 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                     expanded = templateMenuOpen,
                     onDismissRequest = { templateMenuOpen = false }
                 ) {
-                    DropdownMenuItem(
-                        text = { Text("No template") },
-                        onClick = {
-                            defaultTemplateId = -1L
-                            vm.settings.defaultTemplateId = -1L
-                            vm.selectedTemplateId.value = -1L
-                            templateMenuOpen = false
-                        }
-                    )
                     templates.forEach { t ->
                         DropdownMenuItem(
                             text = { Text(t.title) },
@@ -153,6 +163,71 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                                 vm.settings.defaultTemplateId = t.id
                                 vm.selectedTemplateId.value = t.id
                                 templateMenuOpen = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Preferred template language (v2 spec §3A): Home shows
+            // these template chips first.
+            Text("Preferred template language", style = MaterialTheme.typography.titleSmall)
+            Column {
+                OutlinedButton(
+                    onClick = { languageMenuOpen = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = preferredLanguage?.let { templateLanguageLabel(it) } ?: "Any"
+                    )
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                }
+                DropdownMenu(
+                    expanded = languageMenuOpen,
+                    onDismissRequest = { languageMenuOpen = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Any") },
+                        onClick = {
+                            preferredLanguage = null
+                            vm.settings.preferredTemplateLanguage = null
+                            languageMenuOpen = false
+                        }
+                    )
+                    TemplateLanguage.values().forEach { lang ->
+                        DropdownMenuItem(
+                            text = { Text(templateLanguageLabel(lang)) },
+                            onClick = {
+                                preferredLanguage = lang
+                                vm.settings.preferredTemplateLanguage = lang
+                                languageMenuOpen = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Default status for new recents (v2 spec §5).
+            Text("Default status for new customers", style = MaterialTheme.typography.titleSmall)
+            Column {
+                OutlinedButton(
+                    onClick = { statusMenuOpen = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = statusLabel(defaultStatus))
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                }
+                DropdownMenu(
+                    expanded = statusMenuOpen,
+                    onDismissRequest = { statusMenuOpen = false }
+                ) {
+                    RecentStatus.values().forEach { status ->
+                        DropdownMenuItem(
+                            text = { Text(statusLabel(status)) },
+                            onClick = {
+                                defaultStatus = status
+                                vm.settings.defaultStatus = status
+                                statusMenuOpen = false
                             }
                         )
                     }

@@ -16,18 +16,21 @@ import com.fahad1005.sellerchat.data.AppDatabase
 import com.fahad1005.sellerchat.data.Countries
 import com.fahad1005.sellerchat.data.Country
 import com.fahad1005.sellerchat.data.Recent
+import com.fahad1005.sellerchat.data.RecentStatus
 import com.fahad1005.sellerchat.data.SeedData
 import com.fahad1005.sellerchat.data.SettingsStore
 import com.fahad1005.sellerchat.data.Template
+import com.fahad1005.sellerchat.data.TemplateLanguage
+import com.fahad1005.sellerchat.notify.FollowUps
 import com.fahad1005.sellerchat.util.PhoneUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 object WhatsAppPackages {
     const val WHATSAPP = "com.whatsapp"
@@ -47,6 +50,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Templates & recents (Room) ----
 
     val templates: StateFlow<List<Template>> = templateDao.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Unfiltered recents — the Pulse dashboard counts ALL customers,
+     *  never the search-filtered subset. */
+    val recentsAll: StateFlow<List<Recent>> = recentDao.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val recentSearchQuery = MutableStateFlow("")
@@ -71,8 +79,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
+            // v1 seed pass (fresh installs only).
             if (templateDao.count() == 0) {
                 templateDao.insertAll(SeedData.templates())
+            }
+            // v2 seed pass (v2 spec §3C): exactly once per install —
+            // fresh installs and v1 upgraders both get the 12 new
+            // templates appended after the current library order.
+            if (!settings.seedsV2Done) {
+                val startOrder = (templateDao.getAll().maxOfOrNull { it.sortOrder } ?: -1) + 1
+                templateDao.insertAll(SeedData.v2Templates(startOrder))
+                settings.seedsV2Done = true
+            }
+            // Smart default (v2 spec §2B): the default template may not
+            // be "No template". If none was ever chosen, pre-select
+            // Price Inquiry — for brand-new and upgraded installs alike.
+            if (settings.defaultTemplateId == -1L) {
+                val price = templateDao.findByTitle("Price inquiry reply")
+                    ?: templateDao.getAll().firstOrNull()
+                if (price != null) {
+                    settings.defaultTemplateId = price.id
+                    selectedTemplateId.value = price.id
+                }
             }
         }
         refreshInstalledApps()
@@ -161,23 +189,65 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * "Try Demo" (v2 spec §2A): pre-fill the fake number + the Price
+     * Inquiry template on Home and launch WhatsApp immediately, so a
+     * new user sees the whole trick before any setup. Nothing is
+     * recorded to Recents — it is a demo, not a customer. Returns
+     * false when no WhatsApp app is installed or the launch failed.
+     */
+    fun tryDemo(): Boolean {
+        refreshInstalledApps()
+        val pkg = selectedAppPackage.value ?: return false
+        homeNumber.value = "+92 300 1234567"
+        val template = templates.value.firstOrNull { it.title == "Price inquiry reply" }
+            ?: templates.value.firstOrNull()
+        if (template != null) {
+            selectedTemplateId.value = template.id
+        }
+        val pk = Countries.byIso("PK") ?: selectedCountry.value
+        val e164 = PhoneUtils.normalize("+92 300 1234567", pk) ?: return false
+        val text = template?.let { PhoneUtils.applyTemplate(it.body, "") } ?: ""
+        return openChat(pkg, e164, text)
+    }
+
+    /** Record a successful launch. Re-messaging an existing customer
+     *  updates the contact facts but PRESERVES their v2 CRM state
+     *  (status, memo, follow-up, payment) — the upsert is a REPLACE,
+     *  so the existing row is loaded and merged, never rebuilt blank. */
     fun recordRecent(e164: String, label: String, pkg: String, templateTitle: String?) {
         viewModelScope.launch {
-            recentDao.upsert(
-                Recent(
-                    numberE164 = e164,
-                    label = label,
-                    appPackage = pkg,
-                    templateTitle = templateTitle,
-                    timestamp = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            val existing = recentDao.getByNumber(e164)
+            if (existing != null) {
+                recentDao.upsert(
+                    existing.copy(
+                        label = label,
+                        appPackage = pkg,
+                        templateTitle = templateTitle,
+                        timestamp = now
+                    )
                 )
-            )
+            } else {
+                val status = settings.defaultStatus
+                recentDao.upsert(
+                    Recent(
+                        numberE164 = e164,
+                        label = label,
+                        appPackage = pkg,
+                        templateTitle = templateTitle,
+                        timestamp = now,
+                        status = status,
+                        statusChangedAt = now
+                    )
+                )
+            }
         }
     }
 
     // ---- Template actions ----
 
-    fun addTemplate(title: String, body: String, language: com.fahad1005.sellerchat.data.TemplateLanguage) {
+    fun addTemplate(title: String, body: String, language: TemplateLanguage) {
         viewModelScope.launch {
             val nextOrder = (templates.value.maxOfOrNull { it.sortOrder } ?: -1) + 1
             templateDao.insert(Template(title = title, body = body, language = language, sortOrder = nextOrder))
@@ -220,11 +290,64 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteRecent(number: String) {
-        viewModelScope.launch { recentDao.deleteByNumber(number) }
+        viewModelScope.launch {
+            FollowUps.cancel(getApplication(), number)
+            recentDao.deleteByNumber(number)
+        }
     }
 
     fun clearRecents() {
-        viewModelScope.launch { recentDao.clearAll() }
+        viewModelScope.launch {
+            recentsAll.value.forEach { FollowUps.cancel(getApplication(), it.numberE164) }
+            recentDao.clearAll()
+        }
+    }
+
+    /** Move a customer to [status]. Moving INTO Paid stamps paidAt and
+     *  stores the (optional, whole-unit) amount; [paidAmount] null =
+     *  the user skipped the amount prompt. statusChangedAt always
+     *  moves: the waiting clock restarts from the change. */
+    fun setRecentStatus(recent: Recent, status: RecentStatus, paidAmount: Long? = null) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val updated = if (status == RecentStatus.PAID) {
+                recent.copy(
+                    status = status,
+                    statusChangedAt = now,
+                    paidAmountMinor = paidAmount,
+                    paidAt = now
+                )
+            } else {
+                recent.copy(status = status, statusChangedAt = now)
+            }
+            recentDao.upsert(updated)
+        }
+    }
+
+    fun setRecentMemo(recent: Recent, memo: String) {
+        viewModelScope.launch {
+            recentDao.upsert(recent.copy(memo = memo.trim().ifBlank { null }))
+        }
+    }
+
+    /** "Follow-up in 2 days" (v2 spec §4). [withNotification] is the
+     *  outcome of the in-context POST_NOTIFICATIONS ask: true → a real
+     *  WorkManager notification is scheduled; false → in-app reminder
+     *  only (and any previously scheduled job is cancelled so the row
+     *  never claims less than what will actually happen). */
+    fun setFollowUp(recent: Recent, withNotification: Boolean) {
+        viewModelScope.launch {
+            val at = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(2)
+            val ctx = getApplication<Application>()
+            if (withNotification) {
+                FollowUps.schedule(ctx, recent.numberE164, recent.appPackage, recent.label, at)
+            } else {
+                FollowUps.cancel(ctx, recent.numberE164)
+            }
+            recentDao.upsert(
+                recent.copy(followUpAt = at, followUpNotified = withNotification)
+            )
+        }
     }
 
     fun templateById(id: Long): Template? = templates.value.firstOrNull { it.id == id }

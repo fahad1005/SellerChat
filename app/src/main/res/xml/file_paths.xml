@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Only the QR PNG folder inside the app cache is shareable. -->
+    <cache-path
+        name="qr"
+        path="qr/" />
+</paths>

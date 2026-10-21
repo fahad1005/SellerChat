@@ -2,6 +2,7 @@ package com.fahad1005.sellerchat.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -333,6 +334,7 @@ fun HomeScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SelectChip(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
@@ -356,6 +358,7 @@ private fun SelectChip(text: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TemplateChip(
     text: String,

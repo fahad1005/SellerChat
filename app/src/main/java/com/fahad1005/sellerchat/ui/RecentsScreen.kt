@@ -2,6 +2,7 @@ package com.fahad1005.sellerchat.ui
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -198,6 +199,7 @@ fun RecentsScreen(vm: MainViewModel) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun RecentRow(recent: Recent, onTap: () -> Unit, onLongPress: () -> Unit) {
     Surface(

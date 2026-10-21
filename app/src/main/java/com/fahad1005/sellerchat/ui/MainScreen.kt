@@ -3,8 +3,6 @@ package com.fahad1005.sellerchat.ui
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Settings
@@ -28,9 +26,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.fahad1005.sellerchat.R
 import com.fahad1005.sellerchat.data.Template
 import com.fahad1005.sellerchat.viewmodel.MainViewModel
 
@@ -122,13 +122,13 @@ fun SellerChatRoot(vm: MainViewModel) {
                         NavigationBarItem(
                             selected = tab == 1,
                             onClick = { tab = 1 },
-                            icon = { Icon(Icons.Filled.History, contentDescription = null) },
+                            icon = { Icon(painter = painterResource(R.drawable.ic_history), contentDescription = null) },
                             label = { Text("Recents") }
                         )
                         NavigationBarItem(
                             selected = tab == 2,
                             onClick = { tab = 2 },
-                            icon = { Icon(Icons.Filled.Description, contentDescription = null) },
+                            icon = { Icon(painter = painterResource(R.drawable.ic_description), contentDescription = null) },
                             label = { Text("Templates") }
                         )
                     }

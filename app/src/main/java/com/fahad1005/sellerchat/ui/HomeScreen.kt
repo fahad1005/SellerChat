@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -39,12 +38,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
+import com.fahad1005.sellerchat.R
 import com.fahad1005.sellerchat.data.Template
 import com.fahad1005.sellerchat.data.TemplateLanguage
 import com.fahad1005.sellerchat.ui.components.AdBanner
@@ -147,7 +148,7 @@ fun HomeScreen(
                                 numberError = null
                             }
                         }) {
-                            Icon(Icons.Filled.ContentPaste, contentDescription = "Paste number")
+                            Icon(painter = painterResource(R.drawable.ic_content_paste), contentDescription = "Paste number")
                         }
                         if (number.isNotEmpty()) {
                             IconButton(onClick = { vm.homeNumber.value = "" }) {

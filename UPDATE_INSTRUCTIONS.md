@@ -1,52 +1,29 @@
-# SellerChat — Your Upload Steps (read this first)
+# SellerChat v1.0.1 — Build #1 fix (read this first)
 
-Fahad — this is a **brand-new app** (SellerChat), separate from StatusSaver. New app = new GitHub repo. Same robot-builder routine you already know.
+## What went wrong in Build #1 (Bullet's code, not your upload)
+Three icons used in the code — Paste (Home), History + Description (bottom nav) —
+are NOT in the small `material-icons-core` library the app uses on purpose
+(the full icon library is several MB and would break the under-5 MB budget).
+Fix: those 3 icons now ship as tiny vector files (same trick the app already
+uses for its QR icon). No feature changes. Version bumped to 1.0.1 (versionCode 2).
 
-## Step 1 — Create the new repo
+## Changed files in this zip (6)
+- `app/build.gradle.kts` — version bump only
+- `app/src/main/java/com/fahad1005/sellerchat/ui/HomeScreen.kt`
+- `app/src/main/java/com/fahad1005/sellerchat/ui/MainScreen.kt`
+- `app/src/main/res/drawable/ic_content_paste.xml` — NEW
+- `app/src/main/res/drawable/ic_history.xml` — NEW
+- `app/src/main/res/drawable/ic_description.xml` — NEW
 
-1. Go to **github.com** → top-right **+** → **New repository**.
-2. Name it exactly: **SellerChat**
-3. Public or Private — your choice (Private is fine).
-4. Do **NOT** tick "Add a README" (we are uploading our own files).
-5. Click **Create repository**.
-
-## Step 2 — Upload the project
-
-1. Unzip **SellerChat-v1.0-project.zip** on your PC.
-2. In the new repo, click **uploading an existing file**.
-3. Drag in the **inside contents** of the unzipped folder — you should see these go in:
-   - the **app** folder
-   - the **.github** folder (⚠️ hidden folder — if you can't see it, turn on "Hidden items" in File Explorer View settings; the build will NOT run without it)
-   - the **gradle** folder
-   - `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `.gitignore`
-   - the five `.md` files (README, PRIVACY_POLICY, STORE_LISTING, BUILD_NOTES, this one)
-4. Check the staged list: paths must start with `app/…`, `.github/…`, `gradle/…` — **not** with a folder named `sellerchat/…` or `SellerChat-v1.0-project/…`. If they do, you dragged the outside folder — remove and drag the *inside* contents instead.
-5. **Commit changes.**
-
-## Step 3 — Watch Build #1
-
-1. Open the **Actions** tab. "Build APK" starts by itself.
-2. First build downloads the whole Android toolchain — give it several minutes.
-3. Green tick = success. Red X = open the run, find the red step, and screenshot the error lines for Bullet (same drill as StatusSaver).
-
-## Step 4 — Download + the two numbers I need
-
-1. Open the green run → **Artifacts → SellerChat-apks** → download → unzip. Two files:
-   - **app-debug.apk** → install this on your phone and test.
-   - **app-release.apk** → the small, optimized build. (CI signs it with a throwaway key made on the runner, only so it is a real measurable APK. It is for the size test — the debug APK is the one to daily-test.)
-2. Open the run's **"Report APK sizes"** step and tell me the release size it prints. Budget: **under 5,000,000 bytes.**
-
-## Step 5 — Phone test (the acceptance list)
-
-- Fresh install → one first-run screen → Skip or Get started both work.
-- Paste a customer number → **Open chat** → WhatsApp opens with the template **typed in the box, not sent**.
-- Same test with **WhatsApp Business** if the phone has it.
-- Re-message the same number → Recents updates the same row (no duplicate).
-- Templates tab: edit one Urdu template — text must sit correctly (right-to-left).
-- Home → **Show QR** → QR appears; **Share to my status** → set your number → share works.
-- Airplane mode ON → everything still works except the ad space stays empty.
-- Ads check: one small banner at the bottom of Home only. **No full-screen ad, ever.**
-
-## Later (not now)
-
-Real AdMob IDs, your own release keystore / Play App Signing, the $25 Play Console, and the hosted privacy-policy URL are all marked **TODO(FAHAD)** in the README — we do those at launch time, one step at a time.
+## Your upload steps (same as always)
+1. Unzip this file on your PC.
+2. In the SellerChat repo: **Add file → Upload files**.
+3. Drag in the **inside contents** of the unzipped folder (the `app` folder +
+   this file). Check staged paths start with `app/…` — NOT with the zip folder name.
+4. **Commit changes.** GitHub overwrites the 3 changed files and adds the 3 new ones.
+5. **Actions** tab → **Build #2** starts by itself. Give it ~4 minutes.
+6. Green tick → open the run → **Artifacts → SellerChat-apks** → download →
+   install **app-debug.apk** and run the phone test list.
+7. Tell Bullet the release size from the **"Report APK sizes"** step
+   (budget: under 5,000,000 bytes).
+8. Red X → screenshot the red step's error lines for Bullet.

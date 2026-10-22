@@ -158,7 +158,10 @@ fun SellerChatRoot(vm: MainViewModel) {
                                 tab = 2
                             }
                         )
-                        1 -> RecentsScreen(vm = vm)
+                        1 -> RecentsScreen(
+                            vm = vm,
+                            onOpenSettings = { route = Route.Settings }
+                        )
                         else -> TemplatesScreen(
                             vm = vm,
                             pendingEdit = pendingEdit,

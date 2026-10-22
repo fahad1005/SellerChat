@@ -38,10 +38,11 @@ android {
         applicationId = "com.fahad1005.sellerchat"
         minSdk = 24
         targetSdk = 35
-        // NOTE: versionCode history — v1.0.x = 1–3, v2.0 = 4 — so
-        // v2.1 is 5 (Android refuses a lower or equal code on update).
-        versionCode = 5
-        versionName = "2.1"
+        // NOTE: versionCode history — v1.0.x = 1–3, v2.0 = 4,
+        // v2.1 = 5, v2.2 = 6 — so v2.3 is 7 (Android refuses a lower
+        // or equal code on update).
+        versionCode = 7
+        versionName = "2.3"
     }
 
     signingConfigs {

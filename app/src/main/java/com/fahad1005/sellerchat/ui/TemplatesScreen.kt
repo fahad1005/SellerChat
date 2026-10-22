@@ -56,6 +56,7 @@ import com.fahad1005.sellerchat.data.TemplatePurpose
 import com.fahad1005.sellerchat.ui.components.NastaliqUrduFontFamily
 import com.fahad1005.sellerchat.ui.components.TemplateBodyText
 import com.fahad1005.sellerchat.ui.components.usesNastaliq
+import com.fahad1005.sellerchat.ui.components.usesRtlLayout
 import com.fahad1005.sellerchat.viewmodel.MainViewModel
 import java.util.Collections
 
@@ -78,7 +79,11 @@ private val languageTabs: List<Pair<String, TemplateLanguage?>> = listOf(
     "Hindi" to TemplateLanguage.HI,
     "Tamil" to TemplateLanguage.TA,
     "Telugu" to TemplateLanguage.TE,
-    "Marathi" to TemplateLanguage.MR
+    "Marathi" to TemplateLanguage.MR,
+    "French" to TemplateLanguage.FR,
+    "Spanish" to TemplateLanguage.ES,
+    "العربية" to TemplateLanguage.AR,
+    "中文" to TemplateLanguage.ZH
 )
 
 private sealed interface EditorTarget {
@@ -151,8 +156,9 @@ fun TemplatesScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Language filter tabs (v2: 6 template languages + All). The row
-        // scrolls horizontally — eight tabs no longer fit one line.
+        // Language filter tabs (v2.3: every template language + All,
+        // including French / Spanish / العربية / 中文). The row scrolls
+        // horizontally — the full set no longer fits one line.
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.horizontalScroll(rememberScrollState())
@@ -369,12 +375,17 @@ private fun TemplateEditor(
             label = { Text("Message") },
             minLines = 4,
             // Urdu bodies edit in Nastaliq + strict RTL (spec §3B);
-            // other scripts keep the system font and LTR.
+            // Arabic bodies edit RTL in the system font; all other
+            // scripts keep the system font and LTR.
             textStyle = if (usesNastaliq(language)) {
                 androidx.compose.ui.text.TextStyle(
                     fontFamily = NastaliqUrduFontFamily,
                     textDirection = androidx.compose.ui.text.style.TextDirection.Rtl,
                     lineHeight = 30.sp
+                )
+            } else if (usesRtlLayout(language)) {
+                androidx.compose.ui.text.TextStyle(
+                    textDirection = androidx.compose.ui.text.style.TextDirection.Rtl
                 )
             } else {
                 androidx.compose.ui.text.TextStyle()

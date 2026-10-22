@@ -6,8 +6,9 @@ import androidx.room.PrimaryKey
 
 /** Template language tag. The enum NAMES of the v1 values (EN, UR,
  *  ROMAN_UR) are stored verbatim in the v1 database — do not rename
- *  them or existing libraries break. v2 adds HI / TA / TE / MR. */
-enum class TemplateLanguage { EN, UR, ROMAN_UR, HI, TA, TE, MR }
+ *  them or existing libraries break. v2 adds HI / TA / TE / MR;
+ *  v2.3 adds FR / ES / AR / ZH. */
+enum class TemplateLanguage { EN, UR, ROMAN_UR, HI, TA, TE, MR, FR, ES, AR, ZH }
 
 /** What a template is FOR. Seeds are tagged; user templates default to
  *  OTHER. Shown as a small tag on template rows (v2 spec §3). */

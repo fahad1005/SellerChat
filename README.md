@@ -2,11 +2,24 @@
 
 **Message any customer on WhatsApp or WhatsApp Business — with your price and order reply already typed.**
 
-One screen: paste a number → pick WhatsApp / WhatsApp Business → the chat opens with your chosen template already in the message box. Plus labeled recents, reusable templates in English / اردو / Roman Urdu / Hindi / Tamil / Telugu / Marathi, a wa.me link + QR generator, and a one-tap "share my link to my status".
+One screen: paste a number → pick WhatsApp / WhatsApp Business → the chat opens with your chosen template already in the message box. Plus labeled recents, reusable templates in English / اردو / Roman Urdu / Hindi / Tamil / Telugu / Marathi / French / Spanish / Arabic / Chinese, a wa.me link + QR generator, and a one-tap "share my link to my status".
 
-Built for small online sellers in Pakistan, India, Bangladesh, the UAE and Nigeria. **No account, no cloud, no backend. All data stays on the phone.** Nothing is asked at launch; the only permission prompt in the app appears if *you* tap "Follow-up in 2 days" on a customer (notifications, Android 13+ — and the reminder still saves in-app if you decline). One AdMob banner on the Home screen only — never in the chat flow.
+Built for small online sellers in Pakistan, India, Bangladesh, the UAE and Nigeria — and WhatsApp sellers everywhere. **No account, no cloud, no backend. All data stays on the phone.** Nothing is asked at launch; the only permission prompt in the app appears if *you* tap "Follow-up in 2 days" on a customer (notifications, Android 13+ — and the reminder still saves in-app if you decline). One AdMob banner on the Home screen only — never in the chat flow.
 
 Package: `com.fahad1005.sellerchat` · Min SDK 24 · Target SDK 35 · Kotlin + Jetpack Compose (Material 3)
+
+## What's new in v2.3
+
+- **Global Smart Localization.** On the first v2.3 launch — and only once — SellerChat detects your country (SIM first, then device language/region), your currency, and your preferred template language, and sets all three up for you. After that, **Settings → Region & Currency** is yours: country, currency (PKR, INR, BDT, USD, GBP, EUR, AED, SAR, NGN) and template language are manual choices that override the detection forever. The chosen currency drives the Mark Paid prompt, the weekly Pulse total, and the message cleanup rules. Detection uses only permission-free system APIs — no location, no prompt, no network.
+- **12 new templates: French, Spanish, Arabic and Chinese** (price, payment, delivery in each), written in each market's own style — postposed € in French/Spanish, generic amount wording in Arabic, {price} 元 in Chinese. Arabic templates render right-to-left in the system font; the bundled Nastaliq stays Urdu-only and no new fonts ship. ⚠️ These 12 bodies are **AI drafts pending native review**, like the Tamil / Telugu / Marathi sets before them.
+- 36 seed templates in total, and the v2.2 message guarantees carry forward untouched: no raw brackets or placeholders ever reach a customer, and an empty price never strands a currency symbol.
+
+## What's new in v2.2
+
+- **Forward to Teammate.** Save up to 3 teammates in Settings (name + number, on-device only), then hand any customer over from the Recents sheet: WhatsApp opens on the teammate's number with "Customer: X. Please take over this chat." already typed. Forwarding never creates a Recent — teammates are staff, not customers.
+- **Cleaner messages, guaranteed.** The shared fill now also removes unfilled `[…]` hints and multi-word `{…}` tokens, drops a currency marker stranded by an empty price ("Rs", "₹", "روپے"), and swaps the order-confirmation total clause for a complete sentence in English, Roman Urdu and Urdu — a customer never sees a raw bracket or a broken "Total Rs ." again.
+- **Seed wording fixed.** The Roman Urdu (and Urdu) order confirmations no longer double their "ka" when the item is blank, and the payment templates use a `{payment method}` token instead of bracketed text. A one-time correction pass rewrites stored defaults only where they still match the old wording byte-for-byte — your edits are never touched.
+- Same fixed signing key as v2.1: v2.2 installs straight over it, data intact — it doubles as the install-over proof build.
 
 ## What's new in v2.1
 
@@ -68,6 +81,8 @@ The 12 first-launch templates live in one file:
 Edit the `title` / `body` / `language` of any entry, or add new ones (keep `sortOrder` increasing). Placeholders are substituted when a chat is opened (and in the Home preview — one shared fill function, `MainViewModel.filledTemplateText`): the customer label is parsed as "Name — item", so `{name}` gets the name and `{item}` gets the item; `{price}` / `{qty}` are blanked, and any leftover `{…}` token is stripped, so a raw placeholder never reaches a customer. Note: seeds are inserted only when the templates table is empty (first install); changing seeds does not rewrite templates on phones that already ran the app — users can edit/delete every seeded template in the app itself.
 
 The 12 v2 templates live in the same file (`v2Templates()`): they are inserted exactly once per install — fresh installs *and* v1 upgraders — behind the persisted `seedsV2Done` flag, appended after the existing library. The Tamil / Telugu / Marathi bodies are AI drafts pending native-speaker review (see BUILD_NOTES.md); the 3 Hinglish bodies are verbatim from the product spec.
+
+The 12 v2.3 templates live in the same file (`v4Templates()`): French, Spanish, Arabic and Chinese × 3, inserted exactly once behind the persisted `seedsV4Done` flag, which runs **after** the v2 insert and the v2.2 seed corrections (`seedsV3Done`) — an upgrader from v2.0 or v2.1 runs all three passes in order on their first v2.3 launch, and a title+language guard makes duplicates impossible. **All 12 v2.3 bodies are AI drafts pending native-speaker review.**
 
 ## Verify the size budget (release < 5 MB)
 

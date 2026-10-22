@@ -19,9 +19,11 @@ import com.fahad1005.sellerchat.data.Recent
 import com.fahad1005.sellerchat.data.RecentStatus
 import com.fahad1005.sellerchat.data.SeedData
 import com.fahad1005.sellerchat.data.SettingsStore
+import com.fahad1005.sellerchat.data.Teammate
 import com.fahad1005.sellerchat.data.Template
 import com.fahad1005.sellerchat.data.TemplateLanguage
 import com.fahad1005.sellerchat.notify.FollowUps
+import com.fahad1005.sellerchat.util.CurrencyUtils
 import com.fahad1005.sellerchat.util.PhoneUtils
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -91,6 +93,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 templateDao.insertAll(SeedData.v2Templates(startOrder))
                 settings.seedsV2Done = true
             }
+            // v2.2 seed correction pass: seeds never rewrite rows on
+            // their own, so the five corrected v2.2 defaults are applied
+            // explicitly — and ONLY to a row whose body still equals
+            // the old default byte-for-byte. A template the user has
+            // edited is never clobbered.
+            if (!settings.seedsV3Done) {
+                val all = templateDao.getAll()
+                for ((oldBody, newBody) in SeedData.seedCorrections()) {
+                    all.filter { it.body == oldBody }.forEach { row ->
+                        templateDao.update(row.copy(body = newBody))
+                    }
+                }
+                settings.seedsV3Done = true
+            }
+            // v2.3 seed pass: the 12 French / Spanish / Arabic /
+            // Chinese templates, appended exactly once and only AFTER
+            // the v2 pass and the v2.2 corrections above — an upgrader
+            // from v2.0 or v2.1 therefore runs V2 → V3 → V4 in order
+            // on their first v2.3 launch. The title+language guard
+            // also makes a lost flag harmless: a template that is
+            // already in the library is never inserted twice.
+            if (!settings.seedsV4Done) {
+                val existing = templateDao.getAll()
+                val existingKeys = existing.map { it.title to it.language }.toSet()
+                val startOrder = (existing.maxOfOrNull { it.sortOrder } ?: -1) + 1
+                val newTemplates = SeedData.v4Templates(startOrder)
+                    .filterNot { (it.title to it.language) in existingKeys }
+                if (newTemplates.isNotEmpty()) {
+                    templateDao.insertAll(newTemplates)
+                }
+                settings.seedsV4Done = true
+            }
             // Smart default (v2 spec §2B): the default template may not
             // be "No template". If none was ever chosen, pre-select
             // Price Inquiry — for brand-new and upgraded installs alike.
@@ -107,20 +141,78 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun resolveInitialCountry(): Country {
-        val saved = Countries.byIso(settings.countryIso)
-        if (saved != null) return saved
-        val ctx = getApplication<Application>()
-        val simIso = try {
-            val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-            tm?.simCountryIso
+        // v2.3: the one-time region pass runs before anything reads
+        // the country, so Home and First Run open on the detected (or
+        // previously saved) values — never on a mid-init placeholder.
+        initializeRegionIfNeeded()
+        return Countries.byIso(settings.countryIso) ?: Countries.fallback()
+    }
+
+    /**
+     * Global Smart Localization (v2.3): ONE detection pass per install,
+     * gated by [SettingsStore.regionInitialized]. It runs for fresh
+     * installs and for upgraders on their first v2.3 launch, persists
+     * country + currency + preferred template language, sets the flag,
+     * and never runs again — after this, the seller's manual Region &
+     * Currency settings are sovereign.
+     *
+     * Precedence — country: SIM ISO → device Locale country → the
+     * previously saved country → the built-in fallback. Currency: the
+     * detected country through [CurrencyUtils.codeForCountry] (the
+     * PK/IN/BD/NG/AE hand table wins; other countries resolve through
+     * java.util.Currency). Language: the device Locale language mapped
+     * to a template language; anything unsupported lands on EN, set
+     * explicitly so Home prioritizes English.
+     *
+     * Only permission-free APIs are used (TelephonyManager SIM country
+     * and Locale need no runtime permission), and every lookup is
+     * wrapped: an exotic SIM or Locale can cost the user a default,
+     * never a crash on first launch.
+     */
+    private fun initializeRegionIfNeeded() {
+        if (settings.regionInitialized) return
+        try {
+            val ctx = getApplication<Application>()
+            val simIso = try {
+                val tm = ctx.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
+                tm?.simCountryIso
+            } catch (e: Exception) {
+                null
+            }
+            val locale = try {
+                java.util.Locale.getDefault()
+            } catch (e: Exception) {
+                java.util.Locale.US
+            }
+            val detectedCountry = Countries.byIso(simIso)
+                ?: Countries.byIso(locale.country)
+                ?: Countries.byIso(settings.countryIso)
+                ?: Countries.fallback()
+            settings.countryIso = detectedCountry.iso
+            settings.currencyCode = CurrencyUtils.codeForCountry(detectedCountry)
+            settings.preferredTemplateLanguage = when (locale.language.lowercase()) {
+                "ur" -> TemplateLanguage.UR
+                "hi" -> TemplateLanguage.HI
+                "ta" -> TemplateLanguage.TA
+                "te" -> TemplateLanguage.TE
+                "mr" -> TemplateLanguage.MR
+                "fr" -> TemplateLanguage.FR
+                "es" -> TemplateLanguage.ES
+                "ar" -> TemplateLanguage.AR
+                "zh" -> TemplateLanguage.ZH
+                else -> TemplateLanguage.EN
+            }
         } catch (e: Exception) {
-            null
+            // Crash-proof fallback: keep whatever country exists, and
+            // land on USD + English rather than breaking first launch.
+            if (Countries.byIso(settings.countryIso) == null) {
+                settings.countryIso = Countries.fallback().iso
+            }
+            settings.currencyCode = SettingsStore.DEFAULT_CURRENCY_CODE
+            settings.preferredTemplateLanguage = TemplateLanguage.EN
+        } finally {
+            settings.regionInitialized = true
         }
-        val detected = Countries.byIso(simIso)
-            ?: Countries.byIso(java.util.Locale.getDefault().country)
-            ?: Countries.fallback()
-        settings.countryIso = detected.iso
-        return detected
     }
 
     fun setCountry(country: Country) {
@@ -177,9 +269,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * "—", "–", " - " or ",", the first segment becomes {name} and the
      * second becomes {item} ("Ayesha — kurta" → Ayesha / kurta). No
      * separator → the whole label is {name} and {item} is blank.
-     * {price} / {qty} are blanked, and afterwards ANY leftover {...}
-     * token (a custom placeholder, a typo) is stripped — a customer
-     * never sees a raw bracket.
+     *
+     * v2.2 cleanup rules (in order, all deterministic — no grammar
+     * engine):
+     *  1. Empty-price sentence fallbacks: there is no price input
+     *     anywhere in the app, so {price} always resolves empty, and
+     *     the order-confirmation "total" clauses would read as broken
+     *     fragments. Each language's clause is swapped wholesale for a
+     *     complete sentence (three explicit shapes below).
+     *  2. Currency-orphan rule: a currency marker ("Rs", "Rs.", "₹",
+     *     "روپے", "$", "£", "€", or the symbol of the currency code
+     *     configured in Settings) left hugging the empty {price} slot
+     *     is removed together with the placeholder.
+     *  3. Bracket rule: any remaining [...] segment ("[insert]",
+     *     "[X]") is a hint written for the SELLER, never text for the
+     *     customer — brackets and contents are removed entirely.
+     *  4. Leftover-token rule (v2.1, extended): ANY remaining {...}
+     *     token, single- or multi-word ("{payment method}"), is
+     *     stripped — a customer never sees a raw placeholder.
+     *  5. Tidy pass: collapse runs of spaces, pull punctuation back
+     *     onto the word before it, trim the ends.
      */
     fun filledTemplateText(template: Template?): String {
         if (template == null) return ""
@@ -187,14 +296,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .split(Regex("\\s*[—–]\\s*|\\s+-\\s+|\\s*,\\s*"))
         val name = parts.getOrNull(0)?.trim().orEmpty()
         val item = parts.getOrNull(1)?.trim().orEmpty()
+        // No price input exists in the app, so {price} always resolves
+        // empty — both empty-price rules below key on exactly that.
+        val price = ""
         var out = template.body
+
+        if (price.isEmpty()) {
+            // Rule 1 — empty-price sentence fallbacks for the three
+            // order-confirmation total clauses (exact shapes, swapped
+            // wholesale). The Roman Urdu sentence is the founder's
+            // exact wording.
+            out = out
+                .replace(
+                    "Total: Rs {price}.",
+                    "I'll confirm the total amount on reply."
+                )
+                .replace(
+                    "Total Rs {price} hai.",
+                    "Total amount confirm karne ke liye reply karein."
+                )
+                .replace(
+                    "کل رقم {price} روپے ہے۔",
+                    "کل رقم جواب میں کنفرم کر دوں گا۔"
+                )
+            // Rule 2 — currency-orphan removal on either side of where
+            // {price} stood ("The kurta is Rs {price}." must not leave
+            // a stranded "Rs" behind). The marker set is the static
+            // core list plus the symbol of the seller's configured
+            // currency code (Settings → Region & Currency), quoted so
+            // a symbol can never act as regex syntax.
+            val configuredSymbol = CurrencyUtils.symbolForCode(settings.currencyCode)
+            val markerPattern = listOf(
+                "Rs\\.?", "₹", "روپے", "\\$", "£", "€",
+                Regex.escape(configuredSymbol)
+            ).distinct().joinToString("|")
+            out = out.replace(Regex("($markerPattern)\\s*\\{price\\}"), "")
+            out = out.replace(Regex("\\{price\\}\\s*($markerPattern)"), "")
+        }
+
+        out = out
             .replace("{name}", name)
             .replace("{item}", item)
-            .replace("{price}", "")
+            .replace("{price}", price)
             .replace("{qty}", "")
+        // Rule 3 — unfilled [...] hints are removed whole.
+        out = out.replace(Regex("\\[[^\\]]*\\]"), "")
+        // Rule 4 — any leftover {...} token is stripped.
         out = out.replace(Regex("\\{[^}]*\\}"), "")
-        out = out.replace(Regex(" {2,}"), " ").trim()
-        return out
+        // Rule 5 — tidy: space runs collapse, no space before
+        // punctuation (. , ! ? and the Urdu ، ۔), trim the ends.
+        out = out.replace(Regex(" {2,}"), " ")
+        out = out.replace(Regex(" +([.,!?،۔])"), "$1")
+        return out.trim()
     }
 
     // ---- Chat launching ----
@@ -241,6 +394,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val e164 = PhoneUtils.normalize("+92 300 1234567", pk) ?: return false
         val text = filledTemplateText(template)
         return openChat(pkg, e164, text)
+    }
+
+    /**
+     * "Forward to Teammate" (v2.2): hand [recent]'s customer over to a
+     * saved teammate. Opens WhatsApp on the TEAMMATE's number — never
+     * the customer's — with the exact hand-over text, through the same
+     * package-targeted launch path as Open Chat: the seller's default
+     * app first (Settings default, else the current Home selection),
+     * then the other installed app as fallback.
+     *
+     * Deliberately records NO Recent and touches no CRM state: the
+     * teammate is not a customer conversation. Returns true when a
+     * chat opened.
+     */
+    fun forwardToTeammate(recent: Recent, teammate: Teammate): Boolean {
+        val e164 = PhoneUtils.normalize(teammate.number, selectedCountry.value) ?: return false
+        val customer = recent.label.ifBlank { recent.numberE164 }
+        val text = "Customer: $customer. Please take over this chat."
+        refreshInstalledApps()
+        val pm = getApplication<Application>().packageManager
+        val candidates = listOfNotNull(
+            settings.defaultAppPackage,
+            selectedAppPackage.value,
+            WhatsAppPackages.WHATSAPP,
+            WhatsAppPackages.WHATSAPP_BUSINESS
+        ).distinct().filter { isInstalled(pm, it) }
+        for (pkg in candidates) {
+            if (openChat(pkg, e164, text)) return true
+        }
+        return false
     }
 
     /** Record a successful launch. Re-messaging an existing customer

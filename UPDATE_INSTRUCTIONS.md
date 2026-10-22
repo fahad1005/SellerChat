@@ -1,75 +1,122 @@
-# SellerChat — v2.1 Update Steps (read this first)
+# SellerChat — v2.3 Update Steps (read this first)
 
-Fahad — v2.1 is the polish + signing release. The road is short now: **upload the files → paste your key into the secrets → build once more.** Bullet made the permanent key for you and sent it in chat (a password + one text file) — there is no key-making ceremony anymore. Do the sections in order, and every build from then on signs with YOUR permanent key: updates install on top of each other and your data survives, on every phone, forever.
+Fahad — v2.3 is **Global Smart Localization**: the first time it opens, SellerChat detects your country, currency and preferred template language **once** — after that, your manual choices in the new **Settings → Region & Currency** section are in charge forever. It also adds 12 templates: French, Spanish, Arabic and Chinese (price / payment / delivery in each). Nothing about signing changes — your permanent key from v2.1 does all the work.
+
+> The founder brief's "Task 4" fixes (raw brackets, "ka ka", empty-price leftovers) are **not** new in v2.3 — they shipped in v2.2 and are verified still in place. Section 4 below re-checks one of them so you can see they survived.
 
 ---
 
-## Section 1 — Upload the v2.1 files
+## Section 1 — Upload the v2.3 files
 
-1. Unzip **SellerChat-v2.1-updated-files.zip**.
-2. In the SellerChat repo, **Add file → Upload files** and drag in everything from the unzipped folder. Paths are repo-relative, so files land on top of their old versions. You should see **11 files**, including:
-   - `.github/workflows/build.yml` (updated robot — signs with your key, also builds the AAB, and prints the SIGNING line on every run)
-   - `app/build.gradle.kts` (version 2.1 + the permanent signing config)
-   - `app/src/main/java/com/fahad1005/sellerchat/ui/HomeScreen.kt`, `MainScreen.kt`, `RecentsScreen.kt` (the UI fixes)
+1. Unzip **SellerChat-v2.3-updated-files.zip**.
+2. In the SellerChat repo, **Add file → Upload files** and drag in everything from the unzipped folder. Paths are repo-relative, so files land on top of their old versions. You should see **14 files**:
+   - `app/build.gradle.kts` (version 2.3 / code 7)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/Entities.kt` (4 new template languages)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SeedData.kt` (the 12 new templates)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SettingsStore.kt` (region flag + currency code + seed flag)
+   - `app/src/main/java/com/fahad1005/sellerchat/util/CurrencyUtils.kt` (currency codes + symbols)
+   - `app/src/main/java/com/fahad1005/sellerchat/viewmodel/MainViewModel.kt` (one-time detection + seed pass + parser extension)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/SettingsScreen.kt` (Region & Currency section)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/TemplatesScreen.kt` (French / Spanish / العربية / 中文 tabs)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/RecentsScreen.kt` (amounts use your chosen currency)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/components/TemplateText.kt` (Arabic right-to-left rendering)
    - `BUILD_NOTES.md`, `README.md`, `STORE_LISTING.md`, and this file
-   - ⚠️ If the upload silently skips the `.github` folder (it has bitten us before), do the trick you already know from v1: **Add file → Create new file**, type the exact path `.github/workflows/build.yml`, paste in the contents of the **SellerChat-build-workflow-v2.1.txt** file Bullet sent in chat, and commit.
-3. **Commit changes.**
-4. A build will start by itself, and its run page will say `SIGNING: THROWAWAY FALLBACK (secrets not set)`. **Ignore that build completely** — your key isn't in yet. Sections 2–3 fix that, then you build one more time.
+   - There is **no** workflow file and **no signing material** in the zip — `build.yml` is unchanged and your keys stay in repo secrets only.
+3. **Commit changes.** The build starts by itself.
 
 ---
 
-## Section 2 — One paste: put your permanent key in the secrets
+## Section 2 — Build and read the signing line (same as before)
 
-Bullet made the key for you. In chat you received two things: **a password**, and a file called **SellerChat-signing-key-BASE64.txt** (that long text IS your key, written out as letters).
-
-1. Open **SellerChat-signing-key-BASE64.txt**, select **ALL** the text, and copy it.
-   - ⚠️ **NEVER upload this file to the repo.** It goes in exactly ONE place: the secret in step 2. Keep your own copy of it somewhere safe that is NOT this repo (a notes app, a USB stick) — anyone who has this text plus your password owns your app's identity.
-2. Go to the repo's **Settings → Secrets and variables → Actions → New repository secret** and create these THREE secrets, one at a time:
-   - Name: `SIGNING_KEYSTORE_B64` → Secret: paste the copied text
-   - Name: `SIGNING_STORE_PASSWORD` → Secret: the password Bullet gave you in chat
-   - Name: `SIGNING_KEY_PASSWORD` → Secret: the SAME password again (store and key password are the same, by design)
-3. **Write the password in your notes / password manager NOW.** If you lose this password, you can never update the app under the same identity again — you would have to start over as a "new" app. This is the one thing in the whole project where losing something is forever.
-
-**One consequence to know now:** the SellerChat on your phone today (v2.0) was signed with a throwaway key, so **v2.1 needs ONE last uninstall** before it will install. That is expected, and it is the LAST time — from v2.1 onward every update installs on top and your data survives. The test protocol in Section 4 is built around exactly this.
+1. **Actions** tab → open the finished **Build APK** run.
+2. On the run page (job summary / "Report build sizes and signing mode" step) it must say:
+   - **`SIGNING: FIXED KEY`** ✅ — anything else, stop and tell Bullet. A fallback build cannot install over your current app.
+3. The same step prints `app-release.apk -> N bytes` and `app-release.aab -> N bytes`. **Both must be under 5,000,000.** Tell Bullet both numbers.
+4. Green tick → **Artifacts → SellerChat-apks** → download → unzip → use **app-release.apk**.
 
 ---
 
-## Section 3 — Build once more (and read the signing line)
+## Section 3 — Install OVER your current version (do NOT uninstall)
 
-1. **Actions** tab → open the **Build APK** workflow → **Run workflow** (or open the build that fired in Section 1 → **Re-run jobs**).
-2. Open the run. At the top of the run page (job summary) and in the **"Report build sizes and signing mode"** step you must see:
-   - **`SIGNING: FIXED KEY`** ✅ — this is the only acceptable result.
-   - If you see `SIGNING: THROWAWAY FALLBACK (secrets not set)` — STOP. A secret is missing or misnamed. Recheck the three names in Section 2 step 2 character by character, then **Re-run jobs**. Do not use a fallback build for the phone test.
-3. The same step prints the sizes: `app-release.apk -> N bytes` and `app-release.aab -> N bytes`. **Both must be under 5,000,000.** Tell Bullet both numbers.
-4. Green tick → **Artifacts → SellerChat-apks** → download → unzip. You'll use **app-release.apk** for the phone test.
+Do it on **Phone 1**, then **Phone 2** — over v2.2 (or v2.1 / v2.0; the seed passes chain in order by themselves):
 
----
-
-## Section 4 — Multi-device test protocol (the installation proof)
-
-Do this on **Phone 1**, then repeat on **Phone 2**. The point: prove that a FIXED KEY build updates cleanly and keeps data.
-
-**On each phone:**
-
-a. **Uninstall any old SellerChat.** (LAST time ever — the old builds were throwaway-signed; nothing signed that way can be updated, by Android's design.)
-b. First, confirm on the run page that the build said **`SIGNING: FIXED KEY`** (Section 3). Then install the **v2.1 app-release.apk**.
-c. Inside v2.1, **create one Recent**: paste any number, pick a template, **Open chat** (you don't have to send anything in WhatsApp — just come back). Check the customer now shows in Recents. This is the data worth protecting.
-d. **When the follow-up bump build arrives (v2.1.1 — Bullet will send it; it's a version-number-only build with the same key):** install its app-release.apk **OVER v2.1 — do NOT uninstall.** Success = two things, both: **it installs** AND **your Recent from step c is still there.**
-e. Repeat a–d on the second phone.
-
-A build is only "the fix" if its run page shows **FIXED KEY**. A fallback build must NOT be used for this test — if any run shows the fallback line, tell Bullet before installing anything from it.
+a. On the phone, open SellerChat → Recents → confirm your test customer is there. That's the data worth protecting.
+b. Install the v2.3 **app-release.apk** straight over it — **no uninstall**.
+c. Success = two things, both: **it installs** AND **your test Recent is still there**, with its status/memo intact.
+d. While you're there: open **Templates** — the 12 new French / Spanish / Arabic / Chinese templates should have appeared by themselves, exactly once each.
 
 ---
 
-## Section 5 — v2.1 phone checks (the six fixes)
+## Section 4 — v2.3 phone checks (detection + currency + new languages)
 
-1. **Keyboard (fix 1):** on Home, tap the number field so the keyboard opens → the bottom navigation (Home / Recents / Templates) must be **gone** while you type (not floating over the keyboard), and you can **scroll down to the Open chat button** with the keyboard still open. Close the keyboard → the navigation comes back.
-2. **Banner (fix 2):** Home shows the test ad banner pinned at the very bottom of the screen, above the navigation bar — visible without scrolling.
-3. **Preview + auto-fill (fix 3):** type the label **`Ayesha — kurta`**, tap the **Price inquiry reply** chip → directly under the chips, a preview shows the message with **Ayesha** and **kurta** filled in and **no `{ }` brackets anywhere**. Tap **Open chat** → the message in WhatsApp is exactly the preview. (Also try a label with no dash — just a name — the `{item}` spot must come out blank, still with no brackets.)
-4. **Chip order (fix 4):** with a Pakistani (+92) country set and no Preferred Language chosen in Settings, the first chips are English / Urdu / Roman Urdu templates — not Tamil/Telugu. Scroll the chip row to the very end: **"No template" is the last chip.**
-5. **Recents card (fix 5):** each customer row shows a small colored **dot + thin badge** (Inquiry = orange, Ordered = blue, Paid = green, Shipped = purple) next to the name, and the template name as small plain text under the number line — no more stacked pills on the right. Tap the badge → status cycles. Tap the row → the sheet offers **Open Chat / Follow-up in 2 days / Add Memo / Mark Paid**.
-6. **Still true from v2 (spot-check):** the notification permission is asked ONLY when you tap "Follow-up in 2 days"; Urdu templates still render in Nastaliq (eyeball an Urdu chip title on Home — it sits taller; it must not be cut off); everything except the ad works in airplane mode.
+1. **Pre-detected settings:** open **Settings → Region & Currency**. Country, Currency and Preferred template language are already filled in — detected from the phone (SIM country first, then device language/region). On your Pakistani phones expect **Pakistan / PKR (Rs)** and a sensible language.
+2. **Manual beats detection — forever:** change the **Currency** to **USD ($)** → leave Settings → force-stop the app → reopen → Settings still shows **USD**. (Detection ran once; it never comes back.) Change it back to PKR when you're done.
+3. **Currency reaches the money screens:** with the currency still on USD, go to **Recents** → tap a customer → **Mark Paid** — the amount box starts with **$**, not Rs. The **This Week** total at the top of Recents uses **$** too. Cancel out; no fake payment needed.
+4. **New languages in Templates:** the filter row now ends **French · Spanish · العربية · 中文**. Tap **العربية**: 3 Arabic templates, text **right-aligned, reading right-to-left**, in the normal phone font (NOT the Urdu Nastaliq font). Tap **中文**: 3 Chinese templates, left-to-right. French and Spanish: 3 each.
+5. **v2.2 still intact:** Home → label just `Ayesha` → tap **Order confirm (Roman)** → the preview reads "…aap ka order confirm ho gaya hai. Total amount confirm karne ke liye reply karein." — no "ka ka", no brackets, no lone "Rs .".
+6. **Fresh-install check (optional, one phone only):** if a phone has nothing worth keeping: uninstall SellerChat, install the v2.3 APK fresh, open it — First Run already shows your detected country, and Region & Currency is pre-filled. Skip this on any phone whose data matters; checks 1–5 are the real proof.
 
 ## Later (not now)
 
-Real AdMob IDs and the $25 Play Console are still TODO(FAHAD) in the README. **Play App Signing note:** when you eventually publish, Google Play will re-sign the AAB with the Play app key — your permanent key becomes your *upload* key. That's normal and it's exactly why it must be yours and permanent. The Tamil / Telugu / Marathi seed templates are still AI drafts pending a native-speaker once-over.
+Real AdMob IDs and the $25 Play Console are still TODO(FAHAD) in the README. The French / Spanish / Arabic / Chinese templates — like the Tamil / Telugu / Marathi ones — are **AI drafts pending a native-speaker once-over** before a public launch.
+
+---
+---
+
+# SellerChat — v2.2 Update Steps (kept for reference)
+
+Fahad — v2.2 is the launch-polish build: two text bugs fixed (the "ka ka" in the order confirmation, and raw `[…]` brackets leaking into payment messages) plus one small feature, **Forward to Teammate**. Nothing about signing changes — your permanent key from v2.1 does all the work, and **this build replaces the planned v2.1.1 bump**: v2.2 IS the install-over proof now.
+
+> ⚠️ **One thing to know before you judge it:** the Urdu order-confirmation template had the *same* "ka ka" construction as the Roman Urdu one, so it got the *same* fix (its `{item}` slot was removed too). If you want the Urdu one left as it was, tell Bullet — it is a one-line revert. The Roman Urdu fix stands either way.
+
+---
+
+## Section 1 — Upload the v2.2 files
+
+1. Unzip **SellerChat-v2.2-updated-files.zip**.
+2. In the SellerChat repo, **Add file → Upload files** and drag in everything from the unzipped folder. Paths are repo-relative, so files land on top of their old versions. You should see **11 files**:
+   - `app/build.gradle.kts` (version 2.2 / code 6)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SeedData.kt` (corrected templates + the correction list)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SettingsStore.kt` (teammates + the one-time correction flag)
+   - `app/src/main/java/com/fahad1005/sellerchat/viewmodel/MainViewModel.kt` (hardened message cleanup + forward action + correction pass)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/SettingsScreen.kt` (Team Members section)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/RecentsScreen.kt` (Forward to Teammate in the sheet)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/MainScreen.kt` (the sheet's Open Settings jump)
+   - `BUILD_NOTES.md`, `README.md`, `STORE_LISTING.md`, and this file
+   - There is **no** workflow file this time — `build.yml` is unchanged since v2.1 and already prints the SIGNING line.
+3. **Commit changes.** The build starts by itself.
+
+---
+
+## Section 2 — Build and read the signing line (same as v2.1)
+
+1. **Actions** tab → open the finished **Build APK** run.
+2. On the run page (job summary / "Report build sizes and signing mode" step) it must say:
+   - **`SIGNING: FIXED KEY`** ✅ — anything else, stop and tell Bullet.
+3. The same step prints `app-release.apk -> N bytes` and `app-release.aab -> N bytes`. **Both must be under 5,000,000.** Tell Bullet both numbers.
+4. Green tick → **Artifacts → SellerChat-apks** → download → unzip → use **app-release.apk**.
+
+---
+
+## Section 3 — Install OVER v2.1 (the proof — do NOT uninstall)
+
+This is the test the v2.1.1 bump was invented for, now run by v2.2 itself. Do it on **Phone 1**, then **Phone 2**:
+
+a. On the phone, open SellerChat (v2.1) → Recents → confirm your test customer from the v2.1 round is there. That's the data worth protecting.
+b. Install the v2.2 **app-release.apk** straight over it — **no uninstall**.
+c. Success = two things, both: **it installs** AND **your test Recent is still there**, with its status/memo intact.
+d. Bonus check while you're in Recents: open **Templates** — your order-confirmation and payment templates should already show the corrected wording (the app rewrote the untouched defaults by itself; anything you had edited by hand is left exactly as you left it).
+
+---
+
+## Section 4 — v2.2 phone checks (the fixes + the feature)
+
+1. **"ka ka" is gone:** Home → type a label that is just a name (e.g. `Ayesha`) → tap the **Order confirm (Roman)** chip → the preview must read "…aap ka order confirm ho gaya hai. Total amount confirm karne ke liye reply karein." — no "ka ka", no dangling "Rs". Tap **Open chat** and read the draft in WhatsApp: identical.
+2. **No raw brackets:** tap the **Payment details** chip (any language) → the preview/draft must contain **no `[` or `]` and no `{` or `}`** anywhere.
+3. **English order confirmation:** tap **Order confirmation** with no price anywhere → the draft's total sentence reads "I'll confirm the total amount on reply." — never "Total: Rs .".
+4. **Forward to Teammate:** Settings → **Team Members** → add yourself or a second phone (name + number) → back in **Recents**, tap a customer → the sheet now ends with **Forward to Teammate** → tap it → tap the teammate's name → WhatsApp opens **on the teammate's number** with the message already typed: **"Customer: \<name or number\>. Please take over this chat."** Check Recents afterwards: forwarding did **not** add any new row.
+5. **Spot-check nothing regressed:** banner still pinned at the bottom of Home; keyboard still hides the bottom navigation while typing; the notification permission is still asked ONLY on "Follow-up in 2 days".
+
+## Later (not now)
+
+Real AdMob IDs and the $25 Play Console are still TODO(FAHAD) in the README. **Play App Signing note:** when you publish, Google Play re-signs the AAB with the Play app key — your permanent key becomes your *upload* key. That's normal, and it's why it must stay yours. The Tamil / Telugu / Marathi seed templates are still AI drafts pending a native-speaker once-over.

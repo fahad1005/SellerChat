@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -23,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,13 +35,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.fahad1005.sellerchat.BuildConfig
 import com.fahad1005.sellerchat.data.RecentStatus
+import com.fahad1005.sellerchat.data.SettingsStore
 import com.fahad1005.sellerchat.data.TemplateLanguage
 import com.fahad1005.sellerchat.ui.components.CountryPickerDialog
+import com.fahad1005.sellerchat.util.CurrencyUtils
 import com.fahad1005.sellerchat.viewmodel.MainViewModel
 import com.fahad1005.sellerchat.viewmodel.WhatsAppPackages
 
@@ -52,6 +58,10 @@ fun templateLanguageLabel(language: TemplateLanguage): String = when (language) 
     TemplateLanguage.TA -> "Tamil"
     TemplateLanguage.TE -> "Telugu"
     TemplateLanguage.MR -> "Marathi"
+    TemplateLanguage.FR -> "French"
+    TemplateLanguage.ES -> "Spanish"
+    TemplateLanguage.AR -> "Arabic"
+    TemplateLanguage.ZH -> "Chinese"
 }
 
 /** TODO(FAHAD): replace with the real hosted privacy policy URL. */
@@ -72,8 +82,14 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     var templateMenuOpen by remember { mutableStateOf(false) }
     var preferredLanguage by remember { mutableStateOf(vm.settings.preferredTemplateLanguage) }
     var languageMenuOpen by remember { mutableStateOf(false) }
+    var currencyCode by remember { mutableStateOf(vm.settings.currencyCode) }
+    var currencyMenuOpen by remember { mutableStateOf(false) }
     var defaultStatus by remember { mutableStateOf(vm.settings.defaultStatus) }
     var statusMenuOpen by remember { mutableStateOf(false) }
+    var teammates by remember { mutableStateOf(vm.settings.getTeammates()) }
+    var teamName by remember { mutableStateOf("") }
+    var teamNumber by remember { mutableStateOf("") }
+    var teamError by remember { mutableStateOf<String?>(null) }
 
     Scaffold(
         topBar = {
@@ -95,13 +111,85 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Default country
-            Text("Default country", style = MaterialTheme.typography.titleSmall)
+            // Region & Currency (v2.3): country, currency and the
+            // preferred template language grouped in ONE section, each
+            // one a single source of truth backed by the same storage
+            // key it always had (plus the new currency code). The
+            // one-time v2.3 detection initialized all three; whatever
+            // the seller picks here overrides it and persists.
+            Text("Region & Currency", style = MaterialTheme.typography.titleMedium)
+
+            Text("Country", style = MaterialTheme.typography.titleSmall)
             OutlinedButton(
                 onClick = { showCountryPicker = true },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("${country.flag}  ${country.name}  (+${country.dial})")
+            }
+
+            Text("Currency", style = MaterialTheme.typography.titleSmall)
+            Column {
+                OutlinedButton(
+                    onClick = { currencyMenuOpen = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(text = "$currencyCode (${CurrencyUtils.symbolForCode(currencyCode)})")
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                }
+                DropdownMenu(
+                    expanded = currencyMenuOpen,
+                    onDismissRequest = { currencyMenuOpen = false }
+                ) {
+                    CurrencyUtils.supportedCurrencies.forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text("${option.code} (${option.symbol})") },
+                            onClick = {
+                                currencyCode = option.code
+                                vm.settings.currencyCode = option.code
+                                currencyMenuOpen = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Preferred template language (v2 spec §3A): Home shows
+            // these template chips first. Moved into this section in
+            // v2.3 — same setting, same key, one UI instance only.
+            Text("Preferred template language", style = MaterialTheme.typography.titleSmall)
+            Column {
+                OutlinedButton(
+                    onClick = { languageMenuOpen = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = preferredLanguage?.let { templateLanguageLabel(it) } ?: "Any"
+                    )
+                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                }
+                DropdownMenu(
+                    expanded = languageMenuOpen,
+                    onDismissRequest = { languageMenuOpen = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Any") },
+                        onClick = {
+                            preferredLanguage = null
+                            vm.settings.preferredTemplateLanguage = null
+                            languageMenuOpen = false
+                        }
+                    )
+                    TemplateLanguage.values().forEach { lang ->
+                        DropdownMenuItem(
+                            text = { Text(templateLanguageLabel(lang)) },
+                            onClick = {
+                                preferredLanguage = lang
+                                vm.settings.preferredTemplateLanguage = lang
+                                languageMenuOpen = false
+                            }
+                        )
+                    }
+                }
             }
 
             // Default app
@@ -169,44 +257,6 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                 }
             }
 
-            // Preferred template language (v2 spec §3A): Home shows
-            // these template chips first.
-            Text("Preferred template language", style = MaterialTheme.typography.titleSmall)
-            Column {
-                OutlinedButton(
-                    onClick = { languageMenuOpen = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = preferredLanguage?.let { templateLanguageLabel(it) } ?: "Any"
-                    )
-                    Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
-                }
-                DropdownMenu(
-                    expanded = languageMenuOpen,
-                    onDismissRequest = { languageMenuOpen = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Any") },
-                        onClick = {
-                            preferredLanguage = null
-                            vm.settings.preferredTemplateLanguage = null
-                            languageMenuOpen = false
-                        }
-                    )
-                    TemplateLanguage.values().forEach { lang ->
-                        DropdownMenuItem(
-                            text = { Text(templateLanguageLabel(lang)) },
-                            onClick = {
-                                preferredLanguage = lang
-                                vm.settings.preferredTemplateLanguage = lang
-                                languageMenuOpen = false
-                            }
-                        )
-                    }
-                }
-            }
-
             // Default status for new recents (v2 spec §5).
             Text("Default status for new customers", style = MaterialTheme.typography.titleSmall)
             Column {
@@ -231,6 +281,72 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                             }
                         )
                     }
+                }
+            }
+
+            // Team Members (v2.2): up to 3 teammates for "Forward to
+            // Teammate" on the Recents sheet. Name + number, stored
+            // only on this phone (SettingsStore slots) — no account,
+            // no sync, nothing uploaded.
+            Text("Team Members", style = MaterialTheme.typography.titleSmall)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                teammates.forEach { mate ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "${mate.name} — ${mate.number}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            vm.settings.removeTeammate(mate)
+                            teammates = vm.settings.getTeammates()
+                        }) { Text("Delete") }
+                    }
+                }
+                if (teammates.size < SettingsStore.MAX_TEAMMATES) {
+                    OutlinedTextField(
+                        value = teamName,
+                        onValueChange = {
+                            teamName = it
+                            teamError = null
+                        },
+                        label = { Text("Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = teamNumber,
+                        onValueChange = {
+                            teamNumber = it
+                            teamError = null
+                        },
+                        label = { Text("Phone number") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    teamError?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            val digits = teamNumber.count { c -> c.isDigit() }
+                            if (teamName.isBlank() || digits < 7) {
+                                teamError =
+                                    "Enter a name and a valid number (at least 7 digits)."
+                            } else if (vm.settings.addTeammate(teamName, teamNumber)) {
+                                teammates = vm.settings.getTeammates()
+                                teamName = ""
+                                teamNumber = ""
+                                teamError = null
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Add teammate") }
                 }
             }
 

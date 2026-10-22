@@ -24,14 +24,22 @@ val NastaliqUrduFontFamily = FontFamily(
 )
 
 /** True when [language] is Urdu script and its text should render in
- *  Nastaliq with a strict RTL direction. */
+ *  Nastaliq with a strict RTL direction. Nastaliq is for Urdu ONLY —
+ *  no other language ever touches the bundled font. */
 fun usesNastaliq(language: TemplateLanguage): Boolean = language == TemplateLanguage.UR
+
+/** True for the RTL-script template languages. Urdu renders in
+ *  Nastaliq; Arabic (v2.3) renders RTL in the system font, which
+ *  carries Arabic natively — no Arabic font file is bundled. */
+fun usesRtlLayout(language: TemplateLanguage): Boolean =
+    language == TemplateLanguage.UR || language == TemplateLanguage.AR
 
 /** Renders a template body. Urdu-script templates get the Nastaliq
  *  font and a real RTL layout direction so alignment and punctuation
  *  land correctly (digits inside stay LTR — Unicode bidi handles
  *  them; nothing is force-mirrored). Nastaliq needs tall line height
- *  or the script's stacks clip, hence the 30sp override. */
+ *  or the script's stacks clip, hence the 30sp override. Arabic gets
+ *  the same RTL direction with the plain system-font style. */
 @Composable
 fun TemplateBodyText(body: String, language: TemplateLanguage, maxLines: Int = Int.MAX_VALUE) {
     if (usesNastaliq(language)) {
@@ -42,6 +50,15 @@ fun TemplateBodyText(body: String, language: TemplateLanguage, maxLines: Int = I
                     fontFamily = NastaliqUrduFontFamily,
                     lineHeight = 30.sp
                 ),
+                textAlign = TextAlign.Start,
+                maxLines = maxLines
+            )
+        }
+    } else if (usesRtlLayout(language)) {
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Start,
                 maxLines = maxLines
             )

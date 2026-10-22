@@ -101,11 +101,14 @@ private fun waitingText(statusChangedAt: Long, now: Long): String {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RecentsScreen(vm: MainViewModel) {
+fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
     val recents by vm.recents.collectAsState()
     val allRecents by vm.recentsAll.collectAsState()
     val query by vm.recentSearchQuery.collectAsState()
-    val country by vm.selectedCountry.collectAsState()
+    // Amounts follow the seller's configured currency (Settings →
+    // Region & Currency), NOT the phone country: the v2.3 currency
+    // code is the sovereign setting after one-time detection.
+    val currencyCode = vm.settings.currencyCode
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -121,6 +124,10 @@ fun RecentsScreen(vm: MainViewModel) {
 
     var menuFor by remember { mutableStateOf<Recent?>(null) }
     var sheetFor by remember { mutableStateOf<Recent?>(null) }
+    // "Forward to Teammate" (v2.2): the sheet swaps its action list for
+    // the teammate picker; a failed forward reuses Home's error copy.
+    var forwardListOpen by remember { mutableStateOf(false) }
+    var forwardFailed by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Recent?>(null) }
     var renameText by remember { mutableStateOf("") }
     var memoFor by remember { mutableStateOf<Recent?>(null) }
@@ -176,7 +183,7 @@ fun RecentsScreen(vm: MainViewModel) {
             .sumOf { it.paidAmountMinor ?: 0L }
         Text(
             text = "Leads: ${allRecents.size} | Waiting: $waitingCount | Paid: $paidCount | " +
-                "This Week: ${CurrencyUtils.formatWithSymbol(weekSum, country)}",
+                "This Week: ${CurrencyUtils.formatWithSymbol(weekSum, currencyCode)}",
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -295,11 +302,15 @@ fun RecentsScreen(vm: MainViewModel) {
         }
     }
 
-    // ---- Row action sheet (spec §2C) ----
+    // ---- Row action sheet (spec §2C; "Forward to Teammate" added in
+    // v2.2 swaps the action list for the teammate picker, same sheet) ----
     val sheet = sheetFor
     if (sheet != null) {
         ModalBottomSheet(
-            onDismissRequest = { sheetFor = null },
+            onDismissRequest = {
+                sheetFor = null
+                forwardListOpen = false
+            },
             sheetState = rememberModalBottomSheetState()
         ) {
             Column(
@@ -308,30 +319,79 @@ fun RecentsScreen(vm: MainViewModel) {
                     .padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(
-                    text = sheet.label.ifBlank { "+" + sheet.numberE164 },
-                    style = MaterialTheme.typography.titleMedium
-                )
-                SheetAction("Open Chat") {
-                    sheetFor = null
-                    // Re-open the chat with NO template pre-filled.
-                    vm.openChat(sheet.appPackage, sheet.numberE164, "")
-                }
-                SheetAction("Follow-up in 2 days") {
-                    sheetFor = null
-                    requestFollowUp(sheet)
-                }
-                SheetAction(if (sheet.memo.isNullOrBlank()) "Add Memo" else "Edit Memo") {
-                    memoText = sheet.memo ?: ""
-                    memoFor = sheet
-                    sheetFor = null
-                }
-                SheetAction("Mark Paid") {
-                    sheetFor = null
-                    askAmount(sheet)
+                if (!forwardListOpen) {
+                    Text(
+                        text = sheet.label.ifBlank { "+" + sheet.numberE164 },
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    SheetAction("Open Chat") {
+                        sheetFor = null
+                        // Re-open the chat with NO template pre-filled.
+                        vm.openChat(sheet.appPackage, sheet.numberE164, "")
+                    }
+                    SheetAction("Follow-up in 2 days") {
+                        sheetFor = null
+                        requestFollowUp(sheet)
+                    }
+                    SheetAction(if (sheet.memo.isNullOrBlank()) "Add Memo" else "Edit Memo") {
+                        memoText = sheet.memo ?: ""
+                        memoFor = sheet
+                        sheetFor = null
+                    }
+                    SheetAction("Mark Paid") {
+                        sheetFor = null
+                        askAmount(sheet)
+                    }
+                    SheetAction("Forward to Teammate") {
+                        forwardListOpen = true
+                    }
+                } else {
+                    Text(
+                        text = "Forward to",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    val mates = vm.settings.getTeammates()
+                    if (mates.isEmpty()) {
+                        Text(
+                            text = "No teammates yet — add them in Settings",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        SheetAction("Open Settings") {
+                            sheetFor = null
+                            forwardListOpen = false
+                            onOpenSettings()
+                        }
+                    } else {
+                        mates.forEach { mate ->
+                            SheetAction(mate.name) {
+                                val opened = vm.forwardToTeammate(sheet, mate)
+                                sheetFor = null
+                                forwardListOpen = false
+                                if (!opened) forwardFailed = true
+                            }
+                        }
+                    }
+                    SheetAction("Back") {
+                        forwardListOpen = false
+                    }
                 }
             }
         }
+    }
+
+    // ---- Forward failure: the same title/copy as Home's launch
+    // failure dialog. The VM already tried the default app AND the
+    // other installed app, so there is nothing left to offer here. ----
+    if (forwardFailed) {
+        AlertDialog(
+            onDismissRequest = { forwardFailed = false },
+            title = { Text("Could not open WhatsApp") },
+            text = { Text("Could not open WhatsApp. Try the other app.") },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { forwardFailed = false }) { Text("Cancel") }
+            }
+        )
     }
 
     // ---- Memo editor ----
@@ -376,7 +436,7 @@ fun RecentsScreen(vm: MainViewModel) {
                         value = amountText,
                         onValueChange = { amountText = it.filter { c -> c.isDigit() } },
                         label = { Text("Amount") },
-                        prefix = { Text(CurrencyUtils.symbolFor(country) + " ") },
+                        prefix = { Text(CurrencyUtils.symbolForCode(currencyCode) + " ") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth()

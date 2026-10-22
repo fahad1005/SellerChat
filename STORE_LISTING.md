@@ -1,5 +1,13 @@
 # SellerChat — Google Play Listing Draft
 
+## What's new in v2.3 (release notes draft)
+
+SellerChat goes global: on first launch it detects your country, currency and template language automatically — then leaves every choice to you in the new Region & Currency settings. Plus 12 new templates in French, Spanish, Arabic (right-to-left) and Chinese, for 36 ready replies in 10 languages.
+
+## What's new in v2.2 (release notes draft)
+
+New: Forward to Teammate — save up to 3 teammates in Settings and hand a customer over from the Recents sheet with one tap; WhatsApp opens on their number with the hand-over message typed. Plus message polish: order confirmations and payment replies now read cleanly even when a price or item is blank — no stray brackets, no broken totals.
+
 ## What's new in v2.1 (release notes draft)
 
 Polished for launch: see your reply filled in — with the customer's name and item — before you send it; a keyboard-safe home screen that never hides the Open chat button; calmer customer cards with a simple colored status dot; template chips ordered for your language; and under-the-hood permanent signing so updates never disturb your data.
@@ -23,7 +31,9 @@ SellerChat is made for small online sellers — home-based shops, Instagram and 
 
 ✓ **Your replies, ready.** Price inquiry, order confirmation, payment details, delivery update — one tap puts the template in the message box, with the customer's name filled in. You check it and press send. Nothing is ever sent automatically.
 
-✓ **7 languages.** 24 ready-made seller templates in English, اردو (in beautiful Nastaliq script), Roman Urdu, Hinglish, Tamil, Telugu and Marathi — the languages you actually mix in a chat — and you can edit, reorder, and write your own.
+✓ **10 languages.** 36 ready-made seller templates in English, اردو (in beautiful Nastaliq script), Hindi, Tamil, Telugu, Marathi, French, Spanish, العربية (right-to-left) and 中文 — plus Roman Urdu variants — and you can edit, reorder, and write your own.
+
+✓ **Set up for your market, automatically.** First launch detects your country, currency and template language (no permissions, no location) — and the Region & Currency settings let you change any of them, any time. Your currency drives the payment prompts and your weekly paid total.
 
 ✓ **Recents with labels — and a pipeline.** "Ayesha — kurta order", not a mystery number. Every customer gets a status (Inquiry → Ordered → Paid → Shipped), a waiting clock so no lead goes cold, a memo for sizes and delivery notes, and an optional follow-up reminder in 2 days — the notification opens that customer's chat directly.
 

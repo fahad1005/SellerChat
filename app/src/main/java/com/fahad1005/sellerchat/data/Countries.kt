@@ -15,6 +15,13 @@ data class Country(
             }
             return sb.toString()
         }
+
+    /** Allowed lengths of the national significant number (NSN): the
+     *  digit count that must remain AFTER the dial code is removed and
+     *  any trunk '0' is stripped. Drives the strict per-country
+     *  validation on Home (v2.4 task 1). Data lives in [Countries]. */
+    val nsnLengths: Set<Int>
+        get() = Countries.nsnLengthsFor(iso)
 }
 
 object Countries {
@@ -171,6 +178,69 @@ object Countries {
     )
 
     private val byIso: Map<String, Country> = all.associateBy { it.iso }
+
+    /** NSN lengths per ISO (v2.4 task 1) — the digit count after the
+     *  dial code, trunk '0' excluded. The core markets are exact:
+     *  NANPA (+1) 10 · PK 10 · IN 10 · BD 10 · NG 10 · GB 10 · AE 9 ·
+     *  SA 9 · FR 9 · ES 9 · CN 11. Other entries carry their true NSN
+     *  (a set where fixed-line and mobile lengths differ). Any ISO not
+     *  listed here accepts [DEFAULT_NSN_LENGTHS] (7..13) rather than
+     *  guessing a strict length that could reject real numbers. */
+    private val nsnByIso: Map<String, Set<Int>> = mapOf(
+        // +1 (NANPA) — always 10.
+        "US" to setOf(10), "CA" to setOf(10), "DO" to setOf(10),
+        "JM" to setOf(10), "TT" to setOf(10),
+        // Core markets (exact, per the v2.4 spec).
+        "PK" to setOf(10), "IN" to setOf(10), "BD" to setOf(10),
+        "NG" to setOf(10), "GB" to setOf(10),
+        "AE" to setOf(9), "SA" to setOf(9), "FR" to setOf(9),
+        "ES" to setOf(9), "CN" to setOf(11),
+        // True NSNs for the rest of the well-known list.
+        "AF" to setOf(9), "DZ" to setOf(9), "AO" to setOf(9),
+        "AM" to setOf(8), "AR" to setOf(10), "AU" to setOf(9),
+        "AZ" to setOf(9), "BH" to setOf(8), "BE" to setOf(9),
+        "BR" to setOf(10, 11), "BG" to setOf(9), "KH" to setOf(8, 9),
+        "CM" to setOf(9), "CL" to setOf(9), "CO" to setOf(10),
+        "CD" to setOf(9), "CR" to setOf(8), "CU" to setOf(8),
+        "CY" to setOf(8), "CZ" to setOf(9), "DK" to setOf(8),
+        "EG" to setOf(10), "SV" to setOf(8), "EE" to setOf(7, 8),
+        "ET" to setOf(9), "FI" to setOf(9, 10), "GE" to setOf(9),
+        "DE" to setOf(10, 11), "GH" to setOf(9), "GR" to setOf(10),
+        "GT" to setOf(8), "HT" to setOf(8), "HN" to setOf(8),
+        "HK" to setOf(8), "HU" to setOf(9), "IS" to setOf(7),
+        "ID" to setOf(9, 10, 11, 12), "IQ" to setOf(10), "IE" to setOf(9),
+        "IT" to setOf(9, 10), "JP" to setOf(10), "JO" to setOf(9),
+        "KZ" to setOf(10), "KE" to setOf(9), "KW" to setOf(8),
+        "KG" to setOf(9), "LA" to setOf(10), "LV" to setOf(8),
+        "LB" to setOf(7, 8), "LY" to setOf(9), "LT" to setOf(8),
+        "MY" to setOf(9, 10), "MV" to setOf(7), "ML" to setOf(8),
+        "MR" to setOf(8), "MU" to setOf(8), "MX" to setOf(10),
+        "MD" to setOf(8), "MN" to setOf(8), "MA" to setOf(9),
+        "MZ" to setOf(9), "MM" to setOf(9, 10), "NA" to setOf(9),
+        "NP" to setOf(10), "NL" to setOf(9), "NZ" to setOf(8, 9, 10),
+        "NI" to setOf(8), "NE" to setOf(8), "MK" to setOf(8),
+        "NO" to setOf(8), "OM" to setOf(8), "PS" to setOf(9),
+        "PA" to setOf(8), "PY" to setOf(9), "PE" to setOf(9),
+        "PH" to setOf(10), "PL" to setOf(9), "PT" to setOf(9),
+        "QA" to setOf(8), "RO" to setOf(9), "RU" to setOf(10),
+        "RW" to setOf(9), "SN" to setOf(9), "RS" to setOf(9),
+        "SL" to setOf(8), "SG" to setOf(8), "SK" to setOf(9),
+        "SI" to setOf(8), "ZA" to setOf(9), "KR" to setOf(10),
+        "SS" to setOf(9), "LK" to setOf(9), "SD" to setOf(9),
+        "SE" to setOf(9), "CH" to setOf(9), "SY" to setOf(9),
+        "TW" to setOf(9), "TJ" to setOf(9), "TZ" to setOf(9),
+        "TH" to setOf(9), "TG" to setOf(8), "TN" to setOf(8),
+        "TR" to setOf(10), "TM" to setOf(8), "UG" to setOf(9),
+        "UA" to setOf(9), "UY" to setOf(8), "UZ" to setOf(9),
+        "VE" to setOf(10), "VN" to setOf(9), "YE" to setOf(9),
+        "ZM" to setOf(9), "ZW" to setOf(9)
+    )
+
+    /** Fallback NSN window for countries without a pinned entry. */
+    val DEFAULT_NSN_LENGTHS: Set<Int> = (7..13).toSet()
+
+    fun nsnLengthsFor(iso: String): Set<Int> =
+        nsnByIso[iso.uppercase()] ?: DEFAULT_NSN_LENGTHS
 
     /** All distinct dial codes, longest first — used to spot an
      *  already-international number during normalization. */

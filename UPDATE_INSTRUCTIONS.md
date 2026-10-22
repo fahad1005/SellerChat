@@ -1,4 +1,66 @@
-# SellerChat — v2.3 Update Steps (read this first)
+# SellerChat — v2.4 Update Steps (read this first)
+
+Fahad — v2.4 is the **final bug-fix build** from user testing. Six fixes, logic only — no new screens, no design changes: **strict country-code validation** (a Pakistani number typed under +1 is now caught in the app, not in WhatsApp), **Forward to Team** with a proper hand-over message, a **parser that removes whole broken sentences** instead of leaving "The is." behind, the **Pulse bar now follows your currency setting instantly**, the "ka ka" fix now reaches **even templates you edited by hand**, and a **12 dp safety gap** between the Open chat button and the ad banner. Nothing about signing changes — your permanent key does all the work, and this build installs **over** v2.3.
+
+> **Which zip is this?** A normal diff zip, on purpose: your repo is at the **v2.3 final source** (that's what the 15-file FULL upload committed), so this zip's 10 files land exactly on top of it. No cumulative re-pack needed this time.
+
+---
+
+## Section 1 — Upload the v2.4 files
+
+1. Unzip **SellerChat-v2.4-updated-files.zip**.
+2. In the SellerChat repo, **Add file → Upload files** and drag in everything from the unzipped folder. Paths are repo-relative, so files land on top of their old versions. You should see **10 files**:
+   - `app/build.gradle.kts` (version 2.4 / code 8)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/Countries.kt` (per-country number-length table)
+   - `app/src/main/java/com/fahad1005/sellerchat/util/PhoneUtils.kt` (the strict validator)
+   - `app/src/main/java/com/fahad1005/sellerchat/viewmodel/MainViewModel.kt` (live validation state, sentence-clean parser, forward message, fragment-correction pass)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/HomeScreen.kt` (inline country error + disabled actions, banner gap)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/RecentsScreen.kt` (Pulse follows the currency setting, "Forward to Team")
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SettingsStore.kt` (observable currency + correction flag)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SeedData.kt` (the fragment corrections)
+   - `BUILD_NOTES.md` and this file
+   - There is **no** workflow file and **no signing material** in the zip — `build.yml` is unchanged and your keys stay in repo secrets only.
+3. **Commit changes.** The build starts by itself.
+
+---
+
+## Section 2 — Build and read the signing line (same as before)
+
+1. **Actions** tab → open the finished **Build APK** run.
+2. On the run page (job summary / "Report build sizes and signing mode" step) it must say:
+   - **`SIGNING: FIXED KEY`** ✅ — anything else, stop and tell Bullet. A fallback build cannot install over your current app.
+3. The same step prints `app-release.apk -> N bytes` and `app-release.aab -> N bytes`. **Both must be under 5,000,000.** Tell Bullet both numbers.
+4. Green tick → **Artifacts → SellerChat-apks** → download → unzip → use **app-release.apk**.
+
+---
+
+## Section 3 — Install OVER v2.3 (do NOT uninstall — your data is the test)
+
+Do it on **Phone 1**, then **Phone 2**:
+
+a. On the phone, open SellerChat (v2.3) → Recents → confirm your test customer is there. That's the data worth protecting.
+b. Install the v2.4 **app-release.apk** straight over it — **no uninstall** (same permanent key).
+c. Success = two things, both: **it installs** AND **your test Recent is still there**, with its status/memo intact. That survival is itself one of this build's checks — if anything is missing, tell Bullet before touching Phone 2.
+
+---
+
+## Section 4 — v2.4 phone checks (the six fixes)
+
+1. **Wrong country is caught (the big one):** Home → set the country to **United States (+1)** → type `03001234567` → an inline error appears under the number: **"Invalid number for selected country (+1). Please check the country code."** — and **Open chat, Copy wa.me link and Show QR are all disabled**. Nothing can be sent to WhatsApp.
+2. **Right country passes:** switch the country to **Pakistan (+92)** → type `0300 1234567` → the error clears, **Open chat** lights up → tap it → WhatsApp opens the correct chat for **+92 300 1234567**.
+3. **Forward to Team:** Recents → tap a customer → the sheet's last action is now **Forward to Team** → tap it → tap a teammate → WhatsApp opens **on the teammate's number** with this exact message typed: **"Customer Name: \<label\>, Number: \<the customer's number\>, Context: \<the template you used\>. Please take over this chat."** (A customer with no template recorded shows **Context: General**.) Forwarding still adds **no** new Recent.
+4. **Clean sentences, no broken grammar:** label just `Ayesha` → tap **Payment details** → the preview is now just **"Share the screenshot here and I'll confirm your order."** — the old broken "Hi, please send to." sentence is *gone entirely*, not patched. Then label `Ayesha — kurta` → **Order confirm (Roman)** → preview reads "…aap ka order confirm ho gaya hai. Total amount confirm karne ke liye reply karein." — clean, exactly as before.
+5. **Pulse follows currency instantly:** Settings → **Region & Currency → Currency** → pick **USD ($)** → go straight to **Recents** (do NOT restart the app) → the top line's **This Week** now shows **$ 0**, not Rs 0. Tap a customer → **Mark Paid** → the amount box also starts with **$**. Change the currency back to PKR when you're done.
+6. **Banner gap:** Home → look at the bottom: there is now a clear visible gap between the buttons and the ad strip — the ad never touches the Open chat area, scrolled or not, keyboard open or not.
+
+## Later (not now)
+
+Real AdMob IDs and the $25 Play Console are still TODO(FAHAD) in the README. The AI-drafted seed translations (Tamil / Telugu / Marathi / French / Spanish / Arabic / Chinese) are still pending a native-speaker once-over before a public launch.
+
+---
+---
+
+# SellerChat — v2.3 Update Steps (kept for reference)
 
 Fahad — v2.3 is **Global Smart Localization**: the first time it opens, SellerChat detects your country, currency and preferred template language **once** — after that, your manual choices in the new **Settings → Region & Currency** section are in charge forever. It also adds 12 templates: French, Spanish, Arabic and Chinese (price / payment / delivery in each). Nothing about signing changes — your permanent key from v2.1 does all the work.
 

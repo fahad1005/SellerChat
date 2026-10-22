@@ -108,7 +108,13 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
     // Amounts follow the seller's configured currency (Settings →
     // Region & Currency), NOT the phone country: the v2.3 currency
     // code is the sovereign setting after one-time detection.
-    val currencyCode = vm.settings.currencyCode
+    // v2.4 task 4: collected from SettingsStore.currencyCodeFlow —
+    // the pre-v2.4 code read the bare SharedPreferences property
+    // once per composition, and SharedPreferences gives Compose no
+    // change signal, so the Pulse (and the Mark Paid prefix below)
+    // only refreshed by accident. The flow re-renders both in the
+    // same frame as a Settings write.
+    val currencyCode by vm.settings.currencyCodeFlow.collectAsState()
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
 
@@ -124,8 +130,9 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
 
     var menuFor by remember { mutableStateOf<Recent?>(null) }
     var sheetFor by remember { mutableStateOf<Recent?>(null) }
-    // "Forward to Teammate" (v2.2): the sheet swaps its action list for
-    // the teammate picker; a failed forward reuses Home's error copy.
+    // "Forward to Team" (v2.2 as "Forward to Teammate", renamed in
+    // v2.4): the sheet swaps its action list for the teammate
+    // picker; a failed forward reuses Home's error copy.
     var forwardListOpen by remember { mutableStateOf(false) }
     var forwardFailed by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<Recent?>(null) }
@@ -302,8 +309,9 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
         }
     }
 
-    // ---- Row action sheet (spec §2C; "Forward to Teammate" added in
-    // v2.2 swaps the action list for the teammate picker, same sheet) ----
+    // ---- Row action sheet (spec §2C; the forward action added in
+    // v2.2 swaps the action list for the teammate picker, same
+    // sheet; renamed "Forward to Team" in v2.4) ----
     val sheet = sheetFor
     if (sheet != null) {
         ModalBottomSheet(
@@ -342,7 +350,7 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
                         sheetFor = null
                         askAmount(sheet)
                     }
-                    SheetAction("Forward to Teammate") {
+                    SheetAction("Forward to Team") {
                         forwardListOpen = true
                     }
                 } else {

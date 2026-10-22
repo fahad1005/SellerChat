@@ -55,6 +55,74 @@ object PhoneUtils {
         return if (isValidE164(e164)) e164 else null
     }
 
+    /** Outcome of strict per-country validation (v2.4 task 1). */
+    sealed interface NumberValidation {
+        /** Safe to send: [waNumber] is the normalized E.164 digit
+         *  string (dial code + NSN, no '+'). What was validated here
+         *  is exactly what the send paths hand to WhatsApp. */
+        data class Valid(val waNumber: String) : NumberValidation
+
+        /** Non-empty input that cannot be a number for the selected
+         *  country. [reason] is a developer-facing summary; Home
+         *  renders its own fixed sentence with the selected dial code. */
+        data class Invalid(val reason: String) : NumberValidation
+
+        /** Nothing typed yet — no error is shown and the actions sit
+         *  in their normal empty state. */
+        data object Empty : NumberValidation
+    }
+
+    /**
+     * Strict validation of a typed number against ONE selected
+     * [country] (v2.4 task 1). Unlike [normalize] — which guesses the
+     * country from the digits — this treats the dropdown as the
+     * truth: a number that cannot belong to the selected country is
+     * Invalid, so a Pakistani "0300…" typed with +1 selected is caught
+     * on Home instead of opening the wrong chat in WhatsApp.
+     *
+     * Rules, in order:
+     *  1. Digits only; a leading "00" (international prefix) is
+     *     dropped. Nothing left → [NumberValidation.Empty].
+     *  2. Digits starting with the country's dial code AND leaving an
+     *     NSN of an allowed length → Valid, exactly as typed.
+     *  3. National form: a leading '0' is the trunk — stripped
+     *     (exactly one) for every country EXCEPT +1 (NANPA), where a
+     *     0-leading string is never a valid national number and is
+     *     simply measured unstripped. Valid iff the resulting length
+     *     is an allowed NSN length; the normalized form is dial + NSN.
+     *  4. Anything else → Invalid.
+     */
+    fun validateForCountry(rawInput: String, country: Country): NumberValidation {
+        var digits = rawInput.filter { it.isDigit() }
+        if (digits.startsWith("00")) digits = digits.drop(2)
+        if (digits.isEmpty()) return NumberValidation.Empty
+
+        val nsn = country.nsnLengths
+        val dial = country.dial
+
+        // Rule 2 — already in international form for THIS country.
+        if (digits.startsWith(dial) && (digits.length - dial.length) in nsn) {
+            return NumberValidation.Valid(digits)
+        }
+
+        // Rule 3 — national form, with the NANPA trunk exception.
+        val national = if (digits.startsWith("0") && dial != "1") {
+            digits.drop(1)
+        } else {
+            digits
+        }
+        return if (national.length in nsn) {
+            NumberValidation.Valid(dial + national)
+        } else {
+            val lo = nsn.minOrNull() ?: 0
+            val hi = nsn.maxOrNull() ?: 0
+            val expected = if (lo == hi) "$lo-digit" else "$lo–$hi-digit"
+            NumberValidation.Invalid(
+                "Expected a $expected number for ${country.name} (+$dial)"
+            )
+        }
+    }
+
     fun isValidE164(e164: String): Boolean {
         if (e164.length !in 8..15) return false
         if (!e164.all { it.isDigit() }) return false

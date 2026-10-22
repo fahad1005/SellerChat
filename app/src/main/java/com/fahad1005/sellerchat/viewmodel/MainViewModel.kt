@@ -29,6 +29,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -70,9 +71,26 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     val homeNumber = MutableStateFlow("")
     val homeLabel = MutableStateFlow("")
+
     val selectedCountry = MutableStateFlow(resolveInitialCountry())
     val selectedAppPackage = MutableStateFlow<String?>(null)
     val selectedTemplateId = MutableStateFlow(settings.defaultTemplateId)
+
+    /** Strict per-country validation of the Home number field
+     *  (v2.4 task 1): derived LIVE from the typed number and the
+     *  selected country, recomputed on every change of either. Home
+     *  shows the inline error and disables every number-consuming
+     *  action while this is Invalid, and the send paths use the
+     *  Valid state's normalized number — what was validated is what
+     *  gets sent. */
+    val homeNumberValidation: StateFlow<PhoneUtils.NumberValidation> =
+        combine(homeNumber, selectedCountry) { number, country ->
+            PhoneUtils.validateForCountry(number, country)
+        }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            PhoneUtils.NumberValidation.Empty
+        )
     val installedWhatsApp = MutableStateFlow(false)
     val installedWhatsAppBusiness = MutableStateFlow(false)
 
@@ -124,6 +142,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     templateDao.insertAll(newTemplates)
                 }
                 settings.seedsV4Done = true
+            }
+            // v2.4 fragment correction pass: the v2.2 pass above only
+            // rewrote rows still matching the old defaults
+            // byte-for-byte, so a seller who had EDITED an order
+            // confirmation kept the doubled "ka {item} ka order"
+            // fragment (and its Urdu twin) forever. This pass rewrites
+            // the fragment itself wherever it survives — the fragment
+            // is never intentional text — and preserves everything
+            // around it, the seller's edits included. Runs last in
+            // the chain: V2 → V3 → V4 → V5.
+            if (!settings.seedsV5Done) {
+                for (row in templateDao.getAll()) {
+                    var body = row.body
+                    for ((bad, good) in SeedData.seedFragmentCorrections()) {
+                        body = body.replace(bad, good)
+                    }
+                    if (body != row.body) {
+                        templateDao.update(row.copy(body = body))
+                    }
+                }
+                settings.seedsV5Done = true
             }
             // Smart default (v2 spec §2B): the default template may not
             // be "No template". If none was ever chosen, pre-select
@@ -270,25 +309,37 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * second becomes {item} ("Ayesha — kurta" → Ayesha / kurta). No
      * separator → the whole label is {name} and {item} is blank.
      *
-     * v2.2 cleanup rules (in order, all deterministic — no grammar
-     * engine):
+     * Pipeline (v2.4 task 3 rewrote the middle; all deterministic —
+     * no grammar engine):
      *  1. Empty-price sentence fallbacks: there is no price input
      *     anywhere in the app, so {price} always resolves empty, and
      *     the order-confirmation "total" clauses would read as broken
      *     fragments. Each language's clause is swapped wholesale for a
-     *     complete sentence (three explicit shapes below).
-     *  2. Currency-orphan rule: a currency marker ("Rs", "Rs.", "₹",
-     *     "روپے", "$", "£", "€", or the symbol of the currency code
-     *     configured in Settings) left hugging the empty {price} slot
-     *     is removed together with the placeholder.
-     *  3. Bracket rule: any remaining [...] segment ("[insert]",
-     *     "[X]") is a hint written for the SELLER, never text for the
-     *     customer — brackets and contents are removed entirely.
-     *  4. Leftover-token rule (v2.1, extended): ANY remaining {...}
-     *     token, single- or multi-word ("{payment method}"), is
-     *     stripped — a customer never sees a raw placeholder.
-     *  5. Tidy pass: collapse runs of spaces, pull punctuation back
-     *     onto the word before it, trim the ends.
+     *     complete sentence (three explicit shapes below). They run
+     *     FIRST so the replacement sentences survive the drop pass —
+     *     they contain no placeholders.
+     *  2. Sentence-drop pass (v2.4): the text is split into sentences
+     *     (boundaries `.` `!` `?` and the Urdu `۔`, delimiters kept
+     *     attached). A sentence that still carries an unfilled
+     *     CRITICAL placeholder — {price}, {payment method}, or {item}
+     *     while the label gave no item — is dropped WHOLE instead of
+     *     being hollowed out into broken grammar ("The is.", "send
+     *     to."). {name} is NOT critical: a greeting clause survives a
+     *     missing name. Never-empty guard: if dropping would leave
+     *     nothing, the drop is skipped and step 3 runs on the
+     *     post-step-1 text — an imperfect message beats an empty one.
+     *  3. The existing cleanup pipeline on what remains, in its
+     *     original order: currency-orphan rule (a marker — "Rs",
+     *     "Rs.", "₹", "روپے", "$", "£", "€", or the symbol of the
+     *     currency code configured in Settings — hugging the empty
+     *     {price} slot is removed together with the placeholder),
+     *     value substitution, bracket rule (any remaining [...]
+     *     segment is a hint written for the SELLER, never text for
+     *     the customer — removed entirely), leftover-token rule (ANY
+     *     remaining {...} token, single- or multi-word, is stripped —
+     *     a customer never sees a raw placeholder), tidy pass
+     *     (collapse runs of spaces, pull punctuation back onto the
+     *     word before it, trim the ends).
      */
     fun filledTemplateText(template: Template?): String {
         if (template == null) return ""
@@ -296,58 +347,101 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             .split(Regex("\\s*[—–]\\s*|\\s+-\\s+|\\s*,\\s*"))
         val name = parts.getOrNull(0)?.trim().orEmpty()
         val item = parts.getOrNull(1)?.trim().orEmpty()
-        // No price input exists in the app, so {price} always resolves
-        // empty — both empty-price rules below key on exactly that.
-        val price = ""
         var out = template.body
 
-        if (price.isEmpty()) {
-            // Rule 1 — empty-price sentence fallbacks for the three
-            // order-confirmation total clauses (exact shapes, swapped
-            // wholesale). The Roman Urdu sentence is the founder's
-            // exact wording.
-            out = out
-                .replace(
-                    "Total: Rs {price}.",
-                    "I'll confirm the total amount on reply."
-                )
-                .replace(
-                    "Total Rs {price} hai.",
-                    "Total amount confirm karne ke liye reply karein."
-                )
-                .replace(
-                    "کل رقم {price} روپے ہے۔",
-                    "کل رقم جواب میں کنفرم کر دوں گا۔"
-                )
-            // Rule 2 — currency-orphan removal on either side of where
-            // {price} stood ("The kurta is Rs {price}." must not leave
-            // a stranded "Rs" behind). The marker set is the static
-            // core list plus the symbol of the seller's configured
-            // currency code (Settings → Region & Currency), quoted so
-            // a symbol can never act as regex syntax.
-            val configuredSymbol = CurrencyUtils.symbolForCode(settings.currencyCode)
-            val markerPattern = listOf(
-                "Rs\\.?", "₹", "روپے", "\\$", "£", "€",
-                Regex.escape(configuredSymbol)
-            ).distinct().joinToString("|")
-            out = out.replace(Regex("($markerPattern)\\s*\\{price\\}"), "")
-            out = out.replace(Regex("\\{price\\}\\s*($markerPattern)"), "")
+        // Step 1 — empty-price sentence fallbacks for the three
+        // order-confirmation total clauses (exact shapes, swapped
+        // wholesale; v2.2 Rule 1, verbatim). The Roman Urdu sentence
+        // is the founder's exact wording. No price input exists in
+        // the app, so {price} always resolves empty and these
+        // clauses would otherwise read as broken fragments. The
+        // replacement sentences carry no placeholders, so the
+        // sentence-drop pass below can never eat them.
+        out = out
+            .replace(
+                "Total: Rs {price}.",
+                "I'll confirm the total amount on reply."
+            )
+            .replace(
+                "Total Rs {price} hai.",
+                "Total amount confirm karne ke liye reply karein."
+            )
+            .replace(
+                "کل رقم {price} روپے ہے۔",
+                "کل رقم جواب میں کنفرم کر دوں گا۔"
+            )
+
+        // Step 2 — sentence-drop pass (v2.4 task 3): a sentence that
+        // still carries an unfilled CRITICAL placeholder is removed
+        // whole rather than hollowed out ("The {item} is Rs
+        // {price}." must not degrade to "The is."). Critical =
+        // {price} and {payment method} (both always unfilled at send
+        // time) and {item} while the label gave no item. {name} is
+        // deliberately NOT critical — greeting clauses survive a
+        // missing name.
+        val keptSentences = splitSentences(out).filterNot { sentence ->
+            sentence.contains("{price}") ||
+                sentence.contains("{payment method}") ||
+                (item.isEmpty() && sentence.contains("{item}"))
         }
+        val afterDrop = keptSentences.joinToString("")
+        // Never-empty guard: if the drop would leave nothing, skip
+        // it — the old strip pipeline below runs on the post-Step-1
+        // text, so the customer still gets a (flawed) message.
+        if (afterDrop.isNotBlank()) {
+            out = afterDrop
+        }
+
+        // Step 3 — the existing cleanup pipeline, original order.
+        // Currency-orphan rule: a marker left hugging the empty
+        // {price} slot is removed together with the placeholder.
+        // The marker set is the static core list plus the symbol of
+        // the seller's configured currency code (Settings → Region &
+        // Currency), quoted so a symbol can never act as regex
+        // syntax. (After a successful drop pass no {price} remains
+        // and this is a no-op; it still guards the never-empty path.)
+        val configuredSymbol = CurrencyUtils.symbolForCode(settings.currencyCode)
+        val markerPattern = listOf(
+            "Rs\\.?", "₹", "روپے", "\\$", "£", "€",
+            Regex.escape(configuredSymbol)
+        ).distinct().joinToString("|")
+        out = out.replace(Regex("($markerPattern)\\s*\\{price\\}"), "")
+        out = out.replace(Regex("\\{price\\}\\s*($markerPattern)"), "")
 
         out = out
             .replace("{name}", name)
             .replace("{item}", item)
-            .replace("{price}", price)
+            .replace("{price}", "")
             .replace("{qty}", "")
-        // Rule 3 — unfilled [...] hints are removed whole.
+        // Bracket rule — unfilled [...] hints are removed whole.
         out = out.replace(Regex("\\[[^\\]]*\\]"), "")
-        // Rule 4 — any leftover {...} token is stripped.
+        // Leftover-token rule — any remaining {...} token is stripped.
         out = out.replace(Regex("\\{[^}]*\\}"), "")
-        // Rule 5 — tidy: space runs collapse, no space before
-        // punctuation (. , ! ? and the Urdu ، ۔), trim the ends.
+        // Tidy — space runs collapse, no space before punctuation
+        // (. , ! ? and the Urdu ، ۔), trim the ends.
         out = out.replace(Regex(" {2,}"), " ")
         out = out.replace(Regex(" +([.,!?،۔])"), "$1")
         return out.trim()
+    }
+
+    /** Split into sentences on `.` `!` `?` and the Urdu full stop
+     *  `۔`, keeping each delimiter attached to its sentence. A
+     *  trailing fragment without a delimiter is kept as a final
+     *  sentence. (v2.4 task 3, step 2.) */
+    private fun splitSentences(text: String): List<String> {
+        val sentences = mutableListOf<String>()
+        val current = StringBuilder()
+        for (ch in text) {
+            current.append(ch)
+            if (ch == '.' || ch == '!' || ch == '?' || ch == '۔') {
+                sentences += current.toString()
+                current.clear()
+            }
+        }
+        if (current.isNotEmpty()) {
+            sentences += current.toString()
+        }
+        return sentences
     }
 
     // ---- Chat launching ----
@@ -391,15 +485,21 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             selectedTemplateId.value = template.id
         }
         val pk = Countries.byIso("PK") ?: selectedCountry.value
-        val e164 = PhoneUtils.normalize("+92 300 1234567", pk) ?: return false
+        // v2.4: the demo is a send path like any other — it uses the
+        // strict validator's normalized number, not loose normalize.
+        val e164 = when (val v = PhoneUtils.validateForCountry("+92 300 1234567", pk)) {
+            is PhoneUtils.NumberValidation.Valid -> v.waNumber
+            else -> return false
+        }
         val text = filledTemplateText(template)
         return openChat(pkg, e164, text)
     }
 
     /**
-     * "Forward to Teammate" (v2.2): hand [recent]'s customer over to a
-     * saved teammate. Opens WhatsApp on the TEAMMATE's number — never
-     * the customer's — with the exact hand-over text, through the same
+     * "Forward to Team" (v2.2, renamed + richer message in v2.4):
+     * hand [recent]'s customer over to a saved teammate. Opens
+     * WhatsApp on the TEAMMATE's number — never the customer's —
+     * with the exact hand-over text, through the same
      * package-targeted launch path as Open Chat: the seller's default
      * app first (Settings default, else the current Home selection),
      * then the other installed app as fallback.
@@ -410,8 +510,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun forwardToTeammate(recent: Recent, teammate: Teammate): Boolean {
         val e164 = PhoneUtils.normalize(teammate.number, selectedCountry.value) ?: return false
-        val customer = recent.label.ifBlank { recent.numberE164 }
-        val text = "Customer: $customer. Please take over this chat."
+        val customerLabel = recent.label.ifBlank { recent.numberE164 }
+        val context = recent.templateTitle?.takeIf { it.isNotBlank() } ?: "General"
+        val text = "Customer Name: $customerLabel, Number: ${recent.numberE164}, " +
+            "Context: $context. Please take over this chat."
         refreshInstalledApps()
         val pm = getApplication<Application>().packageManager
         val candidates = listOfNotNull(

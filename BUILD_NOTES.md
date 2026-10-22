@@ -1,5 +1,97 @@
 # SellerChat — Build Notes
 
+## v2.4 (final bug-fix build — built on v2.3)
+
+**versionCode 8 / versionName "2.4".** Six fixes from user testing, logic/validation/text only: strict per-country number validation, the team-forward upgrade, a sentence-clean template parser, a live-observing Pulse currency, a fragment-proof seed-typo correction, and AdMob banner clearance. **No new permissions** (manifest untouched — still exactly the two v2 lines), **no new dependencies, no new screens, no UI redesign** (state/spacing changes only where a task required them), **no font files** (`res/font/` still exactly one file).
+
+### Task 1 — strict country validation (`PhoneUtils.validateForCountry`)
+
+The bug: Home used the loose `PhoneUtils.normalize`, which *guesses* the country from the digits — so with **+1** selected, a Pakistani `03001234567` was happily re-homed under +1 (or mis-normalized) and WhatsApp opened a wrong/local chat instead of the app ever objecting. The fix treats the dropdown as the truth.
+
+**NSN data** (`Countries.kt`): a per-ISO map of allowed national-significant-number lengths — the digit count after the dial code, trunk `0` excluded — exposed as `Country.nsnLengths`. Core values, exact:
+
+| Country | Dial | NSN |
+|---|---|---|
+| United States / Canada / Dominican Rep. / Jamaica / Trinidad & Tobago (NANPA) | +1 | 10 |
+| Pakistan | +92 | 10 |
+| India | +91 | 10 |
+| Bangladesh | +880 | 10 |
+| Nigeria | +234 | 10 |
+| United Kingdom | +44 | 10 |
+| UAE | +971 | 9 |
+| Saudi Arabia | +966 | 9 |
+| France | +33 | 9 |
+| Spain | +34 | 9 |
+| China | +86 | 11 |
+
+Other listed countries carry their true NSN in the map (a set where fixed-line and mobile lengths differ, e.g. Brazil 10–11, Germany 10–11); any ISO without a pinned entry accepts **7..13** rather than a guessed strict length that could reject real numbers.
+
+**Validator** (`PhoneUtils.validateForCountry(rawInput, country)` → `NumberValidation.Valid(waNumber) / Invalid(reason) / Empty`, pure and deterministic):
+
+1. Digits only; a leading `00` is dropped. Nothing left → **Empty** (no error; actions sit in their normal empty state).
+2. Digits starting with the selected country's dial code **and** leaving an allowed NSN length → **Valid**, number used as-is.
+3. National form: a leading `0` is the trunk and exactly one is stripped — **except +1 (NANPA), where a 0-leading string is never a valid national number and is measured unstripped** (so `03001234567` under +1 measures 11 ≠ 10 → **Invalid** — the founder's bug case). Valid iff the resulting length is an allowed NSN length; the normalized result is `dial + NSN`.
+4. Anything else → **Invalid**.
+
+**Wiring:** `MainViewModel.homeNumberValidation` combines `homeNumber` + `selectedCountry` and recomputes on every change of either. On Home, an Invalid (non-empty) field shows the inline error — exactly **"Invalid number for selected country (+X). Please check the country code."** with the selected dial code — under the number field in the existing error styling, and **disables Open chat, Copy wa.me link and Show QR** (the three number-consuming actions). The send paths use the Valid state's normalized number, so what was validated is what gets sent; Try Demo was switched to the validator too. Tapping an action with an *empty* field keeps the pre-v2.4 "Enter a valid number" hint. **Untouched by design:** Recents open-chat (numbers already stored as E.164), teammate save/launch normalization, and the Share-to-Status own-number field.
+
+### Task 2 — Forward to Team (upgrade of the v2.2 flow, NOT a rebuild)
+
+The Settings teammates storage, the Recents sheet, the picker and the package-targeted launch shipped in v2.2 and are unchanged mechanically (including: forwarding records **no** Recent). Two changes only:
+
+- The sheet action is renamed **"Forward to Team"**.
+- The pre-filled message is now exactly: **`Customer Name: {label}, Number: {number}, Context: {template}. Please take over this chat.`** — `{label}` = the Recent's label (fallback: its stored number), `{number}` = the Recent's stored E.164 number, `{template}` = the template title recorded on that Recent (fallback: **"General"**).
+
+### Task 3 — the parser drops whole sentences (`MainViewModel.filledTemplateText`)
+
+The bug: the strip pipeline hollowed sentences out around empty placeholders and left the grammar behind ("The is.", "send to."). The pipeline is now:
+
+1. **Rule-1 fallbacks FIRST, verbatim as shipped in v2.2** — the three order-confirmation total clauses are swapped for complete sentences. They contain no placeholders, so step 2 can never eat them.
+2. **Sentence-drop pass:** the text is split into sentences on `.` `!` `?` and the Urdu `۔` (delimiters stay attached; a trailing fragment counts as a sentence). Any sentence still carrying an unfilled **critical** placeholder — `{price}`, `{payment method}`, or `{item}` while the label gave no item — is **dropped whole**. `{name}` is NOT critical (a greeting survives a missing name). **Never-empty guard:** if dropping would leave a blank result, the drop is skipped entirely and step 3 runs on the post-step-1 text.
+3. **The existing pipeline, original order:** currency-orphan removal → value substitution → `[...]` strip → leftover `{...}` strip → tidy.
+
+Verified by simulation against the new code (label → output):
+
+1. **"The {item} is Rs {price}." inside EN Price inquiry, label "Ayesha" (no item):** the sentence is dropped → `Hi Ayesha! Thanks for reaching out. Would you like to place an order?` — no "The is."
+2. **EN Payment details, unpersonalized (blank label):** the "please send … to …" sentence carries `{price}` + `{payment method}` and is dropped whole → `Share the screenshot here and I'll confirm your order.` — the v2.2 cosmetic cost ("Hi, please send to. …") is gone.
+3. **Roman Urdu Order confirm, label "Ayesha — kurta":** the Step-1 fallback sentence survives the drop pass → `Assalam o Alaikum Ayesha, aap ka order confirm ho gaya hai. Total amount confirm karne ke liye reply karein.` (byte-exact the founder's sentence).
+4. **A template whose ONLY sentence is "The {item} is Rs {price}.", label "Ayesha":** the drop would empty the message, so the guard skips it and the old strip pipeline runs → `The is.` — imperfect by design, but never an empty send.
+
+### Task 4 — Pulse currency now observes the setting
+
+**Root cause (found, not assumed):** the observation path did not exist. `RecentsScreen` read `val currencyCode = vm.settings.currencyCode` — a bare SharedPreferences getter (`SettingsStore.currencyCode`); **SettingsStore exposed no observable state at all**, and SharedPreferences gives Compose no change signal, so nothing invalidated the Pulse when Settings wrote a new code. The symbol only ever refreshed as a side effect of unrelated recompositions — navigating away and back (route teardown) or the Recents 60-second clock tick — which is exactly the "still shows Rs 0" the testers hit in a quick pass.
+
+**Fix:** `SettingsStore` now backs the value with `_currencyCodeFlow: MutableStateFlow<String>` (initialized once from SharedPreferences, following the same MutableStateFlow pattern the ViewModel already uses for all observable state), exposed read-only as `currencyCodeFlow: StateFlow<String>`; the `currencyCode` setter persists to SharedPreferences **and** updates the flow, so every write — Settings dropdown or the one-time detection pass — publishes. `RecentsScreen` collects it (`collectAsState()`), so the **Pulse "This Week" symbol and the Mark Paid amount prefix** — both read that one collected value — update in the same frame as the Settings change. No restart, no manual refresh. The plain `currencyCode` property remains for one-shot reads (the fill function's orphan-marker lookup).
+
+### Task 5 — seed typo correction, hardened to fragment level
+
+The "aap ka ka order" fix itself is old (v2.2 seedsV3, byte-for-byte default match) — and that matching was its blind spot: a seller who had *edited* their order confirmation kept the defective construction forever, because their body no longer equaled the old default. v2.4 adds a **fragment-level correction** (`SeedData.seedFragmentCorrections()`, applied by a new one-time pass gated on `SettingsStore.seedsV5Done` — a new flag, because seedsV3 is already consumed on installed devices):
+
+- `"ka {item} ka order"` → `"ka order"` (Roman Urdu)
+- `"کا {item} کا آرڈر"` → `"کا آرڈر"` (Urdu script — the twin construction)
+
+The pass rewrites the fragment inside **any** stored body containing it. The fragment is never intentional text; everything around it — the seller's own edits included — is preserved byte-for-byte. Fresh-install seeds are unchanged (already correct). Pass order in `MainViewModel.init` is now V2 → V3 → V4 → V5.
+
+### Task 6 — AdMob banner clearance: exactly 12 dp
+
+Home's banner call site changed from `Modifier.padding(horizontal = 16.dp)` to `Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)`. The 12 dp sits on the banner container itself — fixed layout space **outside** the scroll area — so the bottom of the scroll content (the "Open chat" CTA zone) can never rest flush against the ad in any scroll or keyboard state. No other layout changed.
+
+### Size statement
+
+The v2.4 delta is code only (a validation table, a validator, parser steps already counted in lines above) — no dependencies, no fonts, no assets. The < 5 MB budget stands as CI measures it: the run prints both `app-release.apk` and `app-release.aab` byte counts, and both must stay under 5,000,000 (see UPDATE_INSTRUCTIONS.md).
+
+### v2.4 acceptance additions (verified at CI / on phone — see UPDATE_INSTRUCTIONS.md)
+
+| # | Criterion | How |
+|---|---|---|
+| 31 | +1 selected + a 0-leading 11-digit number → inline country error, Open chat / Copy link / Show QR disabled; nothing reaches WhatsApp | Phone check in UPDATE_INSTRUCTIONS |
+| 32 | +92 selected + `0300…` passes validation and opens the correct chat with the validator's normalized number | Phone check in UPDATE_INSTRUCTIONS |
+| 33 | Forward to Team sends the exact new message format (label / number / template context, "General" fallback) | Phone check in UPDATE_INSTRUCTIONS |
+| 34 | Parser: critical-placeholder sentences drop whole; the founder's Roman Urdu fallback sentence survives; a single-sentence template still sends (guard) | Simulations above + phone checks |
+| 35 | Settings currency change flips the Pulse symbol (and the Mark Paid prefix) immediately, no restart | Phone check in UPDATE_INSTRUCTIONS |
+| 36 | The fragment correction reaches EDITED order-confirmation templates; surrounding edits preserved | Correct a stored body containing the fragment, relaunch |
+| 37 | Banner never touches the CTA zone — 12 dp clearance in every scroll/keyboard state | Phone check in UPDATE_INSTRUCTIONS |
+
 ## v2.3 (Global Smart Localization — built on v2.2)
 
 **versionCode 7 / versionName "2.3".** One-time first-launch region detection, a sovereign manual **Region & Currency** settings section, a persisted currency code, and 12 new seed templates (French / Spanish / Arabic / Chinese). No new permissions (manifest untouched — still exactly the two v2 lines), no new dependencies, no new font files (`res/font/` still contains exactly one file: the Urdu Nastaliq subset).

@@ -39,10 +39,10 @@ android {
         minSdk = 24
         targetSdk = 35
         // NOTE: versionCode history — v1.0.x = 1–3, v2.0 = 4,
-        // v2.1 = 5, v2.2 = 6 — so v2.3 is 7 (Android refuses a lower
-        // or equal code on update).
-        versionCode = 7
-        versionName = "2.3"
+        // v2.1 = 5, v2.2 = 6, v2.3 = 7 — so v2.4 is 8 (Android refuses
+        // a lower or equal code on update).
+        versionCode = 8
+        versionName = "2.4"
     }
 
     signingConfigs {

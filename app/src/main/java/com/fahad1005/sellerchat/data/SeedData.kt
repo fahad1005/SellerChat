@@ -342,4 +342,30 @@ object SeedData {
         "Assalam o Alaikum {name}, please Rs {price} [payment method] par bhejein aur screenshot yahan share karein." to
             "Assalam o Alaikum {name}, please Rs {price} {payment method} par bhejein aur screenshot yahan share karein."
     )
+
+    /**
+     * The v2.4 FRAGMENT corrections — defective fragment → fixed
+     * fragment, applied to ANY stored body that still contains the
+     * fragment (guarded once per install by
+     * SettingsStore.seedsV5Done).
+     *
+     * Why this exists alongside [seedCorrections]: the v2.2 pass only
+     * rewrote a row whose body still matched the old default
+     * byte-for-byte, so a seller who had edited their order
+     * confirmation — changed a word, added a line — kept the doubled
+     * "ka {item} ka order" construction forever (it renders "aap ka
+     * ka order" whenever the item is blank). The fragment itself is
+     * never intentional text, in either script, so it is rewritten
+     * wherever it survives; everything around it — the seller's own
+     * edits included — is preserved untouched.
+     *
+     * Fresh installs never contain either fragment: the seeds above
+     * already ship the corrected texts.
+     */
+    fun seedFragmentCorrections(): List<Pair<String, String>> = listOf(
+        // Roman Urdu (seed #11's old construction).
+        "ka {item} ka order" to "ka order",
+        // Urdu script (seed #8's old construction — the same doubling).
+        "کا {item} کا آرڈر" to "کا آرڈر"
+    )
 }

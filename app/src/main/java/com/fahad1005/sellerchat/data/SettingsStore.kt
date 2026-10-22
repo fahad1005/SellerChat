@@ -2,6 +2,9 @@ package com.fahad1005.sellerchat.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /** One saved teammate for "Forward to Teammate" (v2.2). [number] is
  *  stored exactly as the seller typed it; it is normalized to E.164
@@ -90,13 +93,36 @@ class SettingsStore(context: Context) {
      *  one-time region pass initializes it from the detected country;
      *  after that it is a manual Settings choice. Defaults to USD only
      *  as a crash-proof read fallback before initialization writes a
-     *  detected value. */
+     *  detected value.
+     *
+     *  v2.4 task 4: the value is ALSO mirrored in [currencyCodeFlow],
+     *  updated on every write. Before v2.4 the Recents Pulse read
+     *  this bare SharedPreferences property once at composition —
+     *  SharedPreferences gives Compose no change signal, so the
+     *  Pulse symbol only refreshed by accident (a route teardown or
+     *  the 60-second clock happening to recompose the screen). The
+     *  flow is the observation path; the plain property remains for
+     *  one-shot reads (e.g. the fill function). */
     var currencyCode: String
-        get() = prefs.getString(KEY_CURRENCY_CODE, null)
+        get() = _currencyCodeFlow.value
+        set(value) {
+            val normalized = value.uppercase()
+            prefs.edit().putString(KEY_CURRENCY_CODE, normalized).apply()
+            _currencyCodeFlow.value = normalized
+        }
+
+    private val _currencyCodeFlow = MutableStateFlow(loadCurrencyCode())
+
+    /** Observable currency code: collectors (the Recents Pulse and
+     *  the Mark Paid prompt) re-render in the same frame as a
+     *  Settings write — no restart, no manual refresh. */
+    val currencyCodeFlow: StateFlow<String> = _currencyCodeFlow.asStateFlow()
+
+    private fun loadCurrencyCode(): String =
+        prefs.getString(KEY_CURRENCY_CODE, null)
             ?.takeIf { it.isNotBlank() }
             ?.uppercase()
             ?: DEFAULT_CURRENCY_CODE
-        set(value) = prefs.edit().putString(KEY_CURRENCY_CODE, value.uppercase()).apply()
 
     /** One-time v2.3 seed pass done flag: the 12 French / Spanish /
      *  Arabic / Chinese templates are appended exactly once per
@@ -113,6 +139,15 @@ class SettingsStore(context: Context) {
     var seedsV3Done: Boolean
         get() = prefs.getBoolean(KEY_SEEDS_V3_DONE, false)
         set(value) = prefs.edit().putBoolean(KEY_SEEDS_V3_DONE, value).apply()
+
+    /** One-time v2.4 fragment correction pass done flag: the doubled
+     *  "ka {item} ka order" fragment (and its Urdu-script twin) is
+     *  rewritten wherever it survives in a stored template body —
+     *  including bodies the seller edited, which the byte-for-byte
+     *  v2.2 pass could not touch (see SeedData). */
+    var seedsV5Done: Boolean
+        get() = prefs.getBoolean(KEY_SEEDS_V5_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_SEEDS_V5_DONE, value).apply()
 
     /** Up to [MAX_TEAMMATES] teammates for "Forward to Teammate"
      *  (Recents sheet). Stored in fixed slots team_name_1..3 /
@@ -166,6 +201,7 @@ class SettingsStore(context: Context) {
         private const val KEY_HOME_TOOLTIP_SHOWN = "home_tooltip_shown"
         private const val KEY_SEEDS_V2_DONE = "seeds_v2_done"
         private const val KEY_SEEDS_V3_DONE = "seeds_v3_done"
+        private const val KEY_SEEDS_V5_DONE = "seeds_v5_done"
         private const val KEY_REGION_INITIALIZED = "region_initialized"
         private const val KEY_CURRENCY_CODE = "currency_code"
         private const val KEY_SEEDS_V4_DONE = "seeds_v4_done"

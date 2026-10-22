@@ -79,6 +79,9 @@ fun HomeScreen(
     val selectedTemplateId by vm.selectedTemplateId.collectAsState()
     val installedWa by vm.installedWhatsApp.collectAsState()
     val installedWab by vm.installedWhatsAppBusiness.collectAsState()
+    // Strict per-country validation (v2.4 task 1), derived live by
+    // the VM from the number field + the selected country.
+    val validation by vm.homeNumberValidation.collectAsState()
 
     var numberError by remember { mutableStateOf<String?>(null) }
     var showCountryPicker by remember { mutableStateOf(false) }
@@ -113,10 +116,28 @@ fun HomeScreen(
         }
     }
 
-    fun normalizedOrError(): String? {
-        val e164 = PhoneUtils.normalize(number, country)
-        numberError = if (e164 == null) "Enter a valid number" else null
-        return e164
+    // Send paths take the validation state's normalized number —
+    // what was validated is what gets sent (v2.4 task 1). Tapping an
+    // action with an EMPTY field keeps the old "Enter a valid
+    // number" hint; an Invalid pair never reaches here — the
+    // actions are disabled and the inline country error below is
+    // showing instead.
+    fun validatedNumber(): String? = when (val v = validation) {
+        is PhoneUtils.NumberValidation.Valid -> v.waNumber
+        is PhoneUtils.NumberValidation.Empty -> {
+            numberError = "Enter a valid number"
+            null
+        }
+        is PhoneUtils.NumberValidation.Invalid -> null
+    }
+
+    val invalidForCountry =
+        validation is PhoneUtils.NumberValidation.Invalid && number.isNotBlank()
+    val shownError = if (invalidForCountry) {
+        "Invalid number for selected country (+${country.dial}). " +
+            "Please check the country code."
+    } else {
+        numberError
     }
 
     // The send text: the VM's one shared fill (v2.1 task 3) — the exact
@@ -124,7 +145,7 @@ fun HomeScreen(
     fun builtText(): String = vm.filledTemplateText(vm.templateById(selectedTemplateId))
 
     fun openChat(pkg: String) {
-        val e164 = normalizedOrError() ?: return
+        val e164 = validatedNumber() ?: return
         val template = vm.templateById(selectedTemplateId)
         val ok = vm.openChat(pkg, e164, builtText())
         if (ok) {
@@ -209,7 +230,7 @@ fun HomeScreen(
                 label = { Text("Customer number") },
                 placeholder = { Text("0300 1234567") },
                 singleLine = true,
-                isError = numberError != null,
+                isError = shownError != null,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
                 trailingIcon = {
                     Row {
@@ -234,9 +255,9 @@ fun HomeScreen(
                 modifier = Modifier.weight(1f)
             )
         }
-        if (numberError != null) {
+        if (shownError != null) {
             Text(
-                text = numberError ?: "",
+                text = shownError ?: "",
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -334,10 +355,12 @@ fun HomeScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // ---- Primary CTA ----
+        // ---- Primary CTA (v2.4 task 1: enabled only for a number
+        // that strictly validates against the selected country) ----
         Button(
             onClick = { selectedApp?.let { openChat(it) } },
-            enabled = selectedApp != null && number.isNotBlank(),
+            enabled = selectedApp != null &&
+                validation is PhoneUtils.NumberValidation.Valid,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
@@ -350,14 +373,20 @@ fun HomeScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            TextButton(onClick = {
-                val e164 = normalizedOrError() ?: return@TextButton
-                clipboard.setText(AnnotatedString(PhoneUtils.waMeLink(e164, builtText())))
-            }) { Text("Copy wa.me link") }
-            TextButton(onClick = {
-                val e164 = normalizedOrError() ?: return@TextButton
-                onShowQr(e164, builtText())
-            }) { Text("Show QR") }
+            TextButton(
+                onClick = {
+                    val e164 = validatedNumber() ?: return@TextButton
+                    clipboard.setText(AnnotatedString(PhoneUtils.waMeLink(e164, builtText())))
+                },
+                enabled = validation !is PhoneUtils.NumberValidation.Invalid
+            ) { Text("Copy wa.me link") }
+            TextButton(
+                onClick = {
+                    val e164 = validatedNumber() ?: return@TextButton
+                    onShowQr(e164, builtText())
+                },
+                enabled = validation !is PhoneUtils.NumberValidation.Invalid
+            ) { Text("Show QR") }
             TextButton(onClick = onShareStatus) { Text("Share to my status") }
         }
 
@@ -365,14 +394,22 @@ fun HomeScreen(
 
         // The ONE ad in the app: a fixed strip at the bottom of Home,
         // OUTSIDE the scroll area, directly above the app's bottom
-        // navigation — exactly where v1.0 had it (v2.1 task 2).
-        AdBanner(modifier = Modifier.padding(horizontal = 16.dp))
+        // navigation — exactly where v1.0 had it (v2.1 task 2). The
+        // 12.dp top padding (v2.4 task 6) is fixed layout space on
+        // the banner container itself, so the scroll content's last
+        // row — the "Open chat" CTA zone — can never rest flush
+        // against the ad in any scroll or keyboard state (AdMob
+        // accidental-click policy).
+        AdBanner(
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)
+        )
     }
 
     if (showCountryPicker) {
         CountryPickerDialog(
             onPick = {
                 vm.setCountry(it)
+                numberError = null
                 showCountryPicker = false
             },
             onDismiss = { showCountryPicker = false }

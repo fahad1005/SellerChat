@@ -9,11 +9,26 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
-// CI-only signing: when GitHub Actions builds the release APK it generates a
-// throwaway keystore and passes its path via this env var, purely so the APK
-// is installable for size measurement. A real release uses Fahad's own
-// keystore / Play App Signing — never this one.
+// Signing (v2.1): TWO modes, picked by which env vars the CI workflow sets.
+//  1. PERMANENT (preferred): the workflow decodes the founder's real
+//     keystore from the SIGNING_KEYSTORE_B64 repo secret and passes its
+//     path + passwords via SELLERCHAT_SIGNING_* — alias is always
+//     "sellerchat". The keystore is a PKCS12 file (sellerchat.p12,
+//     generated locally by the lead agent; the file itself never enters
+//     this repo), so the config below pins storeType "PKCS12" rather
+//     than relying on the JDK default. Every build signed this way
+//     installs OVER the previous one and app data survives updates.
+//  2. THROWAWAY FALLBACK: if the secret is not set (yet), CI generates a
+//     one-off keystore (SELLERCHAT_DEBUG_KEYSTORE) purely so the APK is
+//     installable for size measurement. Builds in this mode can NOT
+//     update a permanent-signed install, or each other. The workflow
+//     prints "SIGNING: FIXED KEY" vs "SIGNING: THROWAWAY FALLBACK
+//     (secrets not set)" on the run page so the mode is never a guess.
+// No keystore or password is ever committed to this repo.
 val ciKeystore: String? = System.getenv("SELLERCHAT_DEBUG_KEYSTORE")
+val fixedKeystore: String? = System.getenv("SELLERCHAT_SIGNING_KEYSTORE")
+val fixedStorePassword: String? = System.getenv("SELLERCHAT_SIGNING_STORE_PASSWORD")
+val fixedKeyPassword: String? = System.getenv("SELLERCHAT_SIGNING_KEY_PASSWORD")
 
 android {
     namespace = "com.fahad1005.sellerchat"
@@ -23,15 +38,22 @@ android {
         applicationId = "com.fahad1005.sellerchat"
         minSdk = 24
         targetSdk = 35
-        // NOTE: v1.0 shipped three CI builds (1.0 / 1.0.1 / 1.0.2 =
-        // versionCode 3), so v2.0 must be versionCode 4 to install
-        // OVER the build on the founder's phone (Android refuses a
-        // lower or equal code). versionName is "2.0" per spec.
-        versionCode = 4
-        versionName = "2.0"
+        // NOTE: versionCode history — v1.0.x = 1–3, v2.0 = 4 — so
+        // v2.1 is 5 (Android refuses a lower or equal code on update).
+        versionCode = 5
+        versionName = "2.1"
     }
 
     signingConfigs {
+        if (fixedKeystore != null) {
+            create("permanent") {
+                storeFile = file(fixedKeystore)
+                storeType = "PKCS12"
+                storePassword = fixedStorePassword
+                keyAlias = "sellerchat"
+                keyPassword = fixedKeyPassword
+            }
+        }
         if (ciKeystore != null) {
             create("ciDebug") {
                 storeFile = file(ciKeystore)
@@ -50,7 +72,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (ciKeystore != null) {
+            if (fixedKeystore != null) {
+                signingConfig = signingConfigs.getByName("permanent")
+            } else if (ciKeystore != null) {
                 signingConfig = signingConfigs.getByName("ciDebug")
             }
         }

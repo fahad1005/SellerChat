@@ -7,13 +7,15 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -86,12 +88,29 @@ fun HomeScreen(
     // One-time tooltip (v2 spec §2A): persisted flag, shown exactly once.
     var showTooltip by remember { mutableStateOf(!vm.settings.homeTooltipShown) }
 
-    // Preferred language first (v2 spec §3A): a stable sort, so the
-    // seller's language leads the chip row and the rest keep DB order.
+    // Chip order (v2.1 task 4): the Preferred Template Language leads.
+    // When it is "Any"/unset, the priority is derived from the user's
+    // default country instead of showing a random language mix:
+    //   PK → EN, UR, ROMAN_UR · IN → HI, EN · BD → EN · AE/NG → EN ·
+    //   anywhere else → EN. (Table also documented in BUILD_NOTES.)
+    // The sort is stable: templates outside the priority list keep
+    // their library order after the prioritised ones.
     val preferredLanguage = vm.settings.preferredTemplateLanguage
-    val sortedTemplates = remember(templates, preferredLanguage) {
-        if (preferredLanguage == null) templates
-        else templates.sortedBy { if (it.language == preferredLanguage) 0 else 1 }
+    val priorityLanguages = remember(preferredLanguage, country) {
+        when {
+            preferredLanguage != null -> listOf(preferredLanguage)
+            country.iso == "PK" -> listOf(
+                TemplateLanguage.EN, TemplateLanguage.UR, TemplateLanguage.ROMAN_UR
+            )
+            country.iso == "IN" -> listOf(TemplateLanguage.HI, TemplateLanguage.EN)
+            else -> listOf(TemplateLanguage.EN)
+        }
+    }
+    val sortedTemplates = remember(templates, priorityLanguages) {
+        templates.sortedBy { t ->
+            val idx = priorityLanguages.indexOf(t.language)
+            if (idx >= 0) idx else priorityLanguages.size
+        }
     }
 
     fun normalizedOrError(): String? {
@@ -100,10 +119,9 @@ fun HomeScreen(
         return e164
     }
 
-    fun builtText(): String {
-        val t = vm.templateById(selectedTemplateId)
-        return if (t != null) PhoneUtils.applyTemplate(t.body, label.trim()) else ""
-    }
+    // The send text: the VM's one shared fill (v2.1 task 3) — the exact
+    // same function that renders the preview under the chips.
+    fun builtText(): String = vm.filledTemplateText(vm.templateById(selectedTemplateId))
 
     fun openChat(pkg: String) {
         val e164 = normalizedOrError() ?: return
@@ -121,12 +139,32 @@ fun HomeScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    // Layout math (v2.1 task 1 — keyboard overlap): the manifest sets
+    // windowSoftInputMode="adjustResize" on MainActivity, so when the
+    // keyboard opens the window itself shrinks; the Scaffold in
+    // MainScreen additionally hides the bottom navigation while the IME
+    // is visible, so the nav can never float above the keyboard. What
+    // remains for Home is exactly (viewport − top bar) tall:
+    //   [ scrollable content column, weight 1 ] + [ banner strip ]
+    // The "Open chat" CTA lives INSIDE the scroll region, so it is
+    // always reachable by scrolling, and the banner is laid out AFTER
+    // the scroll region — a sibling, never a scroll child — so it sits
+    // fixed at the bottom of Home (like v1.0) and can neither be pushed
+    // off-screen by the content nor overlap the CTA. (In v2 the banner
+    // was the last child of a NON-scrolling Column behind a weight-1
+    // Spacer: any viewport too short for the full content — small
+    // phone, or adjustResize shrinking the window for the keyboard —
+    // pushed the banner past the bottom edge. That is why it looked
+    // "missing". It was never deleted from the code.)
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .imePadding()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
         // ---- One-time tooltip: the whole app in one line, once ----
         if (showTooltip) {
             Card(modifier = Modifier.fillMaxWidth()) {
@@ -249,17 +287,11 @@ fun HomeScreen(
         }
 
         // ---- Template chips (moved UP in v2, spec §2B: sellers see
-        // their replies before anything optional) ----
+        // their replies before anything optional). v2.1 task 4: the
+        // "No template" chip sits at the FAR END of the row, after every
+        // template, so it is never tapped by accident. ----
         Text(text = "Reply template", style = MaterialTheme.typography.titleSmall)
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            item {
-                TemplateChip(
-                    text = "No template",
-                    selected = selectedTemplateId == -1L,
-                    onClick = { vm.selectedTemplateId.value = -1L },
-                    onLongClick = null
-                )
-            }
             items(sortedTemplates, key = { it.id }) { template ->
                 TemplateChip(
                     text = template.title,
@@ -269,6 +301,27 @@ fun HomeScreen(
                     language = template.language
                 )
             }
+            item {
+                TemplateChip(
+                    text = "No template",
+                    selected = selectedTemplateId == -1L,
+                    onClick = { vm.selectedTemplateId.value = -1L },
+                    onLongClick = null
+                )
+            }
+        }
+
+        // ---- Filled preview (v2.1 task 3): the selected template with
+        // the label's {name} / {item} already filled in, 2 lines max —
+        // rendered by the SAME VM fill function the send path uses, so
+        // a seller always knows exactly what they are sending. ----
+        val selectedTemplate = vm.templateById(selectedTemplateId)
+        if (selectedTemplate != null) {
+            TemplateBodyText(
+                body = vm.filledTemplateText(selectedTemplate),
+                language = selectedTemplate.language,
+                maxLines = 2
+            )
         }
 
         // ---- Optional label (moved DOWN in v2, spec §2B) ----
@@ -308,10 +361,12 @@ fun HomeScreen(
             TextButton(onClick = onShareStatus) { Text("Share to my status") }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        } // end of the scrollable content column
 
-        // The ONE ad in the app: Home bottom only.
-        AdBanner()
+        // The ONE ad in the app: a fixed strip at the bottom of Home,
+        // OUTSIDE the scroll area, directly above the app's bottom
+        // navigation — exactly where v1.0 had it (v2.1 task 2).
+        AdBanner(modifier = Modifier.padding(horizontal = 16.dp))
     }
 
     if (showCountryPicker) {

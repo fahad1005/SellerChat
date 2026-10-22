@@ -1,6 +1,8 @@
 package com.fahad1005.sellerchat.ui
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -27,6 +29,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -112,6 +115,13 @@ fun SellerChatRoot(vm: MainViewModel) {
                     )
                 },
                 bottomBar = {
+                    // Keyboard rule (v2.1 task 1): while the soft keyboard
+                    // is visible the bottom navigation HIDES — with
+                    // adjustResize the window shrinks, and a nav bar left
+                    // in place would sit on top of the keyboard looking
+                    // like it floats. It returns when the keyboard closes.
+                    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                    if (!imeVisible) {
                     NavigationBar {
                         NavigationBarItem(
                             selected = tab == 0,
@@ -132,6 +142,7 @@ fun SellerChatRoot(vm: MainViewModel) {
                             label = { Text("Templates") }
                         )
                     }
+                    } // end if (!imeVisible)
                 }
             ) { padding ->
                 Box(modifier = Modifier.padding(padding)) {

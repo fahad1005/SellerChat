@@ -1,5 +1,9 @@
 # SellerChat — Google Play Listing Draft
 
+## What's new in v2.1 (release notes draft)
+
+Polished for launch: see your reply filled in — with the customer's name and item — before you send it; a keyboard-safe home screen that never hides the Open chat button; calmer customer cards with a simple colored status dot; template chips ordered for your language; and under-the-hood permanent signing so updates never disturb your data.
+
 ## Title (30 chars max)
 SellerChat — WhatsApp Seller Replies
 
@@ -40,10 +44,10 @@ SellerChat is not affiliated with WhatsApp LLC or Meta. WhatsApp is a trademark 
 
 ## Screenshot checklist (capture in this order)
 
-1. **Home screen with a number pasted and a template chip selected** — caption: "Paste a number. Your reply is ready."
+1. **Home screen with a number pasted, a template chip selected, and the filled preview visible under the chips** (label "Ayesha — kurta" so the preview shows her name and item filled in) — caption: "Paste a number. See your reply before you send it."
 2. **WhatsApp chat open with the template pre-filled in the message box** (press nothing) — caption: "The chat opens with your price reply typed."
 3. **Templates screen showing English + اردو + Roman Urdu templates** — caption: "Templates in English, اردو & Roman Urdu."
-4. **Recents with customer labels, status chips and the Pulse row** ("Ayesha — kurta order", Waiting clock visible) — caption: "Customers with names, not mystery numbers."
+4. **Recents with customer labels, colored status dots and the Pulse row** ("Ayesha — kurta order", Waiting clock visible) — caption: "Customers with names, not mystery numbers."
 5. **QR / wa.me link screen** — caption: "Your order link + QR for your status."
 6. **Share-to-status screen** — caption: "Customers tap your status link and land in your chat."
 7. **First-run / settings privacy block** — caption: "No account. No cloud. Your data stays on your phone."

@@ -8,6 +8,15 @@ Built for small online sellers in Pakistan, India, Bangladesh, the UAE and Niger
 
 Package: `com.fahad1005.sellerchat` · Min SDK 24 · Target SDK 35 · Kotlin + Jetpack Compose (Material 3)
 
+## What's new in v2.1
+
+- **Permanent signing.** Builds now sign with your own fixed key (kept in repo secrets, set up once — see UPDATE_INSTRUCTIONS.md), so updates install on top of each other and data survives. Every CI run page prints `SIGNING: FIXED KEY` or `SIGNING: THROWAWAY FALLBACK (secrets not set)` — no guessing which mode a build used.
+- **See it before you send it.** Tapping a template chip shows the filled message right under the chips — the label is parsed as "Name — item", so `Ayesha — kurta` fills `{name}` and `{item}` automatically, and leftover `{…}` tokens are stripped: a customer never sees a raw bracket. The preview and the send use one shared fill function, so they always match.
+- **Keyboard-safe Home.** The content scrolls, the bottom navigation hides while you type, and the banner is pinned back at the bottom of Home (v2's layout could push it off-screen).
+- **Calmer Recents cards.** Status is now a small colored dot + outline badge next to the customer's name (orange / blue / green / purple); the template used is plain text under the number.
+- **Smarter chip order.** With no preferred language set, chips follow your country (Pakistan → English, Urdu, Roman Urdu first; India → Hindi, English); "No template" moved to the end of the row.
+- CI now also builds the release **AAB** and reports APK + AAB sizes on every run.
+
 ## What's new in v2.0
 
 - **Try Demo** on the first-run screen: one tap opens WhatsApp with a sample number + the price reply, before any setup.
@@ -37,7 +46,7 @@ gradle :app:bundleRelease
 gradle :app:assembleRelease
 ```
 
-**Signing:** the release build is unsigned by default. For a real store upload, create your own keystore and either (a) add a `signingConfigs` block in `app/build.gradle.kts`, or (b) enroll in Play App Signing and sign the AAB with your upload key. In CI, GitHub Actions generates a *throwaway* keystore (env var `SELLERCHAT_DEBUG_KEYSTORE`) purely so the release APK is installable for size measurement — never ship that file to users.
+**Signing (v2.1 model):** the app has ONE permanent key, alias `sellerchat`, in a PKCS12 file (`sellerchat.p12`) generated once locally by the lead agent. The founder received it as a base64 text file and pasted it into repo secrets (`SIGNING_KEYSTORE_B64`, `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_PASSWORD`) — the .p12 and its base64 live outside this repo and are never committed — full founder steps in UPDATE_INSTRUCTIONS.md. CI decodes it to a temp file on the runner (never printed, never committed) and `app/build.gradle.kts` signs release with it via the `permanent` signing config (env `SELLERCHAT_SIGNING_*`, storeType PKCS12). If the secrets are absent, CI falls back to a *throwaway* runner keystore so builds never hard-fail — but fallback builds cannot update fixed-key installs, and the run page says so (`SIGNING: THROWAWAY FALLBACK (secrets not set)` vs `SIGNING: FIXED KEY`). Locally, with no env vars set, the release build is unsigned. When you publish, this key becomes your Play **upload** key under Play App Signing. Guard the passwords: losing them means losing the ability to update the app under this identity.
 
 No Gradle wrapper is committed (the build machines here have no Java to generate one); CI installs Gradle 8.9 via `gradle/actions/setup-gradle`. With Android Studio, just open the project root and it will offer to create the wrapper / sync as usual.
 
@@ -56,7 +65,7 @@ The 12 first-launch templates live in one file:
 
 `app/src/main/java/com/fahad1005/sellerchat/data/SeedData.kt`
 
-Edit the `title` / `body` / `language` of any entry, or add new ones (keep `sortOrder` increasing). Placeholders `{name}`, `{price}`, `{item}`, `{qty}` are substituted when a chat is opened — `{name}` becomes the customer label, the rest are blanked so a raw placeholder never reaches a customer. Note: seeds are inserted only when the templates table is empty (first install); changing seeds does not rewrite templates on phones that already ran the app — users can edit/delete every seeded template in the app itself.
+Edit the `title` / `body` / `language` of any entry, or add new ones (keep `sortOrder` increasing). Placeholders are substituted when a chat is opened (and in the Home preview — one shared fill function, `MainViewModel.filledTemplateText`): the customer label is parsed as "Name — item", so `{name}` gets the name and `{item}` gets the item; `{price}` / `{qty}` are blanked, and any leftover `{…}` token is stripped, so a raw placeholder never reaches a customer. Note: seeds are inserted only when the templates table is empty (first install); changing seeds does not rewrite templates on phones that already ran the app — users can edit/delete every seeded template in the app itself.
 
 The 12 v2 templates live in the same file (`v2Templates()`): they are inserted exactly once per install — fresh installs *and* v1 upgraders — behind the persisted `seedsV2Done` flag, appended after the existing library. The Tamil / Telugu / Marathi bodies are AI drafts pending native-speaker review (see BUILD_NOTES.md); the 3 Hinglish bodies are verbatim from the product spec.
 
@@ -65,8 +74,9 @@ The 12 v2 templates live in the same file (`v2Templates()`): they are inserted e
 The release budget is a hard product constraint. CI prints a size report on every build (Actions → the run → "Report APK sizes"). To verify locally:
 
 ```bash
-gradle :app:assembleRelease
+gradle :app:assembleRelease :app:bundleRelease
 ls -la app/build/outputs/apk/release/app-release.apk   # must stay under 5,000,000 bytes
+ls -la app/build/outputs/bundle/release/app-release.aab # same budget — CI reports both on every run
 ```
 
 How the budget is kept — every dependency justified:
@@ -77,7 +87,7 @@ How the budget is kept — every dependency justified:
 | material-icons-**core** only | The *-extended* icon pack is megabytes of vectors. Missing glyphs (QR, chat bubble) ship as two tiny local vector drawables instead. |
 | Room (runtime + ktx + compiler) | Templates + recents need ordered, searchable, durable local storage; Room is the smallest *safe* way to do that in Kotlin. |
 | WorkManager (work-runtime-ktx 2.9.1) — **v2** | Follow-up reminders that survive reboot and Doze without an exact-alarm permission. The sanctioned scheduling cost (~200–400 KB after R8); the only new dependency in v2. |
-| Subsetted Noto Nastaliq Urdu font — **v2** | Urdu-script templates render in real Nastaliq instead of the system fallback. Subsetted with fonttools to the Arabic blocks + Latin/digits, static weight 400, no hinting: 899,288 bytes raw in `res/font/` (deflate-compressed inside the APK), vs 1,033,544 bytes for the unsubsetted static font. Hindi/Marathi/Tamil/Telugu use system fonts — no other font is bundled. |
+| Subsetted Noto Nastaliq Urdu font — **v2** | Urdu-script templates render in real Nastaliq instead of the system fallback. Subsetted with fonttools to the Arabic blocks + Latin/digits, static weight 400, no hinting: 899,288 bytes raw in `res/font/` (deflate-compressed inside the APK), vs 1,033,544 bytes for the unsubsetted static font. Hindi/Marathi/Tamil/Telugu use system fonts — no other font is bundled. **v2.1 audit:** a tighter re-subset (no Latin letters) measured only 11,968 bytes smaller and dropped letters used by the placeholder tokens inside the Urdu bodies — rejected; the 899,288-byte cut stays (see BUILD_NOTES). |
 | play-services-ads 23.6.0 | The single Home banner. The largest single line item; accepted because ads are the v1 business model. No other Google services (no Firebase, no Analytics) are included. |
 | ZXing **core** 3.5.3 | QR *generation* only (~500 KB pre-shrink, much less after R8). The android-embedded/camera variants were rejected — no scanning is needed. |
 | core-ktx, activity-compose, lifecycle | Small AndroidX glue required by Compose/ViewModel. |

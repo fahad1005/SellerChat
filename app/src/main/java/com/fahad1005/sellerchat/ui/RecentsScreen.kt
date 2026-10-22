@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -18,8 +19,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -466,15 +469,34 @@ private fun RecentRow(
                 modifier = Modifier.padding(top = 2.dp)
             )
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = recent.label.ifBlank { "+" + recent.numberE164 },
-                    style = MaterialTheme.typography.titleMedium
-                )
+                // Line 1: the name + the status as a small dot + thin
+                // outline badge beside it (v2.1 task 5 — the v2 card
+                // stacked two fat pills on the right and cramped the
+                // row). The badge is still the tap-to-cycle target.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = recent.label.ifBlank { "+" + recent.numberE164 },
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    StatusBadge(status = recent.status, onClick = onStatusChipTap)
+                }
+                // Line 2: number · app · relative time.
                 Text(
                     text = "+${recent.numberE164} · ${WhatsAppPackages.displayName(recent.appPackage)} · ${TimeUtils.relative(recent.timestamp)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                // Template used: small PLAIN text under the timestamp
+                // line — no pill, no background (v2.1 task 5).
+                val tag = recent.templateTitle
+                if (!tag.isNullOrBlank()) {
+                    Text(
+                        text = tag,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 // Pinned memo, under the name (spec §2C).
                 val memo = recent.memo
                 if (!memo.isNullOrBlank()) {
@@ -504,41 +526,51 @@ private fun RecentRow(
                     )
                 }
             }
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                // Status chip: tap cycles Inquiry → Ordered → Paid → Shipped.
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = when (recent.status) {
-                        RecentStatus.INQUIRY -> MaterialTheme.colorScheme.tertiaryContainer
-                        RecentStatus.ORDERED -> MaterialTheme.colorScheme.secondaryContainer
-                        RecentStatus.PAID -> MaterialTheme.colorScheme.primaryContainer
-                        RecentStatus.SHIPPED -> MaterialTheme.colorScheme.surface
-                    },
-                    modifier = Modifier.clickable(onClick = onStatusChipTap)
-                ) {
-                    Text(
-                        text = statusLabel(recent.status),
-                        style = MaterialTheme.typography.labelMedium,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-                val tag = recent.templateTitle
-                if (!tag.isNullOrBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = tag,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-                }
-            }
+        }
+    }
+}
+
+/** Status colors (v2.1 task 5): INQUIRY shares the waiting clock's
+ *  orange so the card reads as one system; ORDERED blue, PAID green,
+ *  SHIPPED purple. */
+private fun statusColor(status: RecentStatus): Color = when (status) {
+    RecentStatus.INQUIRY -> WaitingOrange
+    RecentStatus.ORDERED -> Color(0xFF1565C0)
+    RecentStatus.PAID -> Color(0xFF2E7D32)
+    RecentStatus.SHIPPED -> Color(0xFF6A1B9A)
+}
+
+/** The status indicator: a small colored dot + a thin outline badge.
+ *  Visually small, but the tap target is a full 48dp tall (padding
+ *  around the badge) — tap cycles Inquiry → Ordered → Paid → Shipped,
+ *  exactly like the v2 pill did. */
+@Composable
+private fun StatusBadge(status: RecentStatus, onClick: () -> Unit) {
+    val color = statusColor(status)
+    Box(
+        modifier = Modifier
+            .height(48.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier
+                .border(1.dp, color, RoundedCornerShape(50))
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(color, CircleShape)
+            )
+            Text(
+                text = statusLabel(status),
+                style = MaterialTheme.typography.labelSmall,
+                color = color
+            )
         }
     }
 }

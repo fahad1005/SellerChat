@@ -1,5 +1,70 @@
 # SellerChat — Build Notes
 
+## v2.1 (polish + signing permanence — built on v2.0, no new screens/tabs/settings)
+
+**versionCode 5 / versionName "2.1".** Two halves: the founder's six UI fixes (Part A) and permanent signing (Part B). Plus a founder addendum on signing visibility and multi-device testing.
+
+### Part A — the six fixes, task by task
+
+**Task 1 — Keyboard overlap.** The manifest already carried `android:windowSoftInputMode="adjustResize"` on MainActivity from v2 (verified, unchanged — so the manifest is NOT in this update zip). The real defect was layout: Home was one non-scrolling `Column`, so a shrunken viewport overflowed and pushed the CTA (and the banner) off the bottom edge. Fix:
+- Home is now `Column { scrollable content (weight 1, verticalScroll + imePadding) ; banner }` — the "Open chat" CTA lives inside the scroll region and is always reachable by scrolling while typing.
+- MainScreen's Scaffold now **hides the bottom NavigationBar while the IME is visible** (`WindowInsets.ime` bottom > 0), so the nav can never float above the keyboard; it returns when the keyboard closes.
+- Layout math: viewport height (after adjustResize + Scaffold insets) = scroll region + banner strip, exactly. The banner is a sibling AFTER the scroll region, so content length can never displace it, and it can never overlap the CTA.
+
+**Task 2 — Banner restored.** Root cause, plainly: **the banner was never deleted in v2** — `AdBanner()` was still called once, as the last child of Home's non-scrolling Column, behind a `Spacer(Modifier.weight(1f))`. On any viewport too short for the full content (smaller phones, or the keyboard-shrunk window), that last child is the first thing laid out past the bottom edge — invisible in practice, which is exactly what the founder saw. v2.1 pins it as a fixed strip under the scroll area, directly above the bottom navigation — v1.0's position. `AdView` still exists in exactly one composable (`ui/components/AdBanner.kt`), called from exactly one place.
+
+**Task 3 — Template preview + smart auto-fill.** One shared function, `MainViewModel.filledTemplateText(template)`, is now the ONLY fill implementation (the old `PhoneUtils.applyTemplate` was deleted; both of its call sites migrated). It feeds: the Home inline preview, Open chat, Copy wa.me link, Show QR, and Try Demo — so the preview is byte-for-byte what gets sent.
+- Label parsing: split on `—`, `–`, ` - `, or `,` → segment 1 = `{name}`, segment 2 = `{item}` ("Ayesha — kurta" → Ayesha / kurta); no separator → the whole label is `{name}`, `{item}` blank. `{price}` / `{qty}` blanked as before.
+- After the four known replacements, **any leftover `{...}` token is regex-stripped** (custom placeholders, typos, half-typed tokens) and double spaces collapsed — a raw bracket can never reach a customer.
+- The preview sits directly under the chip row: the selected template's FILLED text, max 2 lines (material3 `Text` ellipsizes at maxLines). It re-renders live as the label is typed. The v1 long-press bottom sheet still shows the RAW body (placeholders visible) with Edit — that is the editor-facing view; the inline preview is the customer-facing one. Recents tap-to-reopen still sends no template (unchanged), and a sent chat still records the template TITLE on the Recent.
+
+**Task 4 — Home chip ordering.** Chips sort by a priority language list, stable within groups: the Settings Preferred Template Language if set; otherwise derived from the user's default country —
+
+| Default country | Priority languages (first → last) |
+|---|---|
+| PK | EN, UR, ROMAN_UR |
+| IN | HI, EN |
+| BD | EN |
+| AE / NG | EN |
+| any other | EN |
+
+(languages outside the list follow in library order). The **"No template" chip moved to the far END** of the chip row, after every template; it remains selectable per-send.
+
+**Task 5 — Recents card cleanup.** The right-side stacked pill column is gone. New row: line 1 = label/number + **status dot + thin outline badge** beside the name (dot + border + text in the status color); line 2 = number · app · relative time; template used = small **plain text** under line 2 (no pill/background); memo still pinned under the name block; waiting clock still shows for INQUIRY; follow-up line unchanged. Status colors: INQUIRY orange `0xFFEF6C00` (the waiting clock's orange), ORDERED blue `0xFF1565C0`, PAID green `0xFF2E7D32`, SHIPPED purple `0xFF6A1B9A`. The badge stays the tap-to-cycle target with a 48dp-tall tap target around the small visual. Bottom sheet VERIFIED in code to contain exactly: **Open Chat / Follow-up in 2 days / Add Memo / Mark Paid** (the memo action reads "Edit Memo" when a memo already exists) — nothing was missing, nothing added.
+
+**Task 6 — Size & font audit.** `res/font/` contains exactly ONE file: `noto_nastaliq_urdu.ttf`. Hindi/Marathi/Tamil/Telugu render in system fonts — `TemplateText.kt` references only `R.font.noto_nastaliq_urdu`, applied only to Urdu-script text; no other font file exists in the project. Nastaliq re-subset test (fonttools, same layout features as v2):
+- Current cut: **899,288 bytes** (unicodes = Latin U+0020–007E + U+00A0 + U+0600–06FF + U+0750–077F; cmap = 356 entries). Verified: **all 53 distinct codepoints** in the Urdu seed strings (3 titles + 3 bodies) are present.
+- Tighter trial cut (Arabic blocks + presentation forms U+FB50–FDFF/U+FE80–FEFF + digits + basic punctuation, Latin letters dropped): **887,320 bytes** — a saving of only **11,968 bytes**, AND it removes 13 Latin letters (a c d e h i m n o p r t y) that occur in the Urdu seed bodies inside the `{name}` / `{item}` / `{price}` / `[payment method]` tokens, failing the every-seed-codepoint rule.
+- **Decision: keep the 899,288-byte cut.** Both keep-conditions were met (< 50 KB saving AND glyph risk). The trial file was discarded; the shipped font is byte-identical to v2.0's.
+
+### Part B — permanent signing
+
+- **Model:** the keystore lives ONLY as repo secrets: `SIGNING_KEYSTORE_B64` (base64 of the PKCS12 file `sellerchat.p12`), `SIGNING_STORE_PASSWORD`, `SIGNING_KEY_PASSWORD`. The key alias is fixed as `sellerchat` in the workflow/Gradle (not a secret). Nothing secret is ever committed or printed.
+- **Key provenance:** the permanent key was generated LOCALLY by the lead agent as a PKCS12 file (`sellerchat.p12`, alias `sellerchat`, RSA 2048, 100-year self-signed cert) and handed to the founder as a base64 text file for ONE paste into the `SIGNING_KEYSTORE_B64` secret. The .p12 and its base64 stay OUT of this repo — never committed, never uploaded. The cert fingerprint is quoted to the founder in chat for his records. (An earlier design generated the key with a one-time in-GitHub workflow, `generate-signing-key.yml`; the founder found that multi-step ceremony too difficult, so the workflow was REMOVED from the package and that road no longer exists.)
+- **build.yml:** a "Prepare signing" step decodes the secret to `$RUNNER_TEMP/sellerchat.p12` and hands Gradle the PATH via `$GITHUB_ENV` (passwords travel separately, as step env on the build step only — never written to disk). PKCS12 is safe end-to-end on the JDK 17 runner: it is the JDK's default keystore type, and the Gradle `permanent` signing config additionally pins `storeType = "PKCS12"` — no JKS assumption anywhere. If the secret is absent, the step generates the old throwaway runner key instead, so a build NEVER hard-fails before setup. `app/build.gradle.kts` mirrors this: a `permanent` signing config (env `SELLERCHAT_SIGNING_*`) wins over the `ciDebug` throwaway config when both exist.
+- **Visibility (founder addendum 1):** every build prints exactly one of these lines in the "Prepare signing" step log, again in the "Report build sizes and signing mode" step, and in the GitHub job summary:
+  - `SIGNING: FIXED KEY`
+  - `SIGNING: THROWAWAY FALLBACK (secrets not set)`
+  A build counts as "the fix" ONLY if its run page says FIXED KEY.
+- **AAB too:** the build now also runs `:app:bundleRelease`, and the report step + job summary print BOTH the release APK and release AAB byte sizes (budget still < 5,000,000 bytes each; the exact figures come from CI, as always — nothing is fabricated here).
+
+### Founder addendum 2 & 3 — testing, and what comes next
+
+- UPDATE_INSTRUCTIONS.md now carries the **multi-device test protocol** (per phone: last uninstall → install the FIXED KEY v2.1 release APK → create one Recent → install the follow-up build OVER it → the Recent must still be there; repeat on phone 2).
+- ⚠️ **PLANNED PROOF BUILD: v2.1.1** — a version-bump-only follow-up (same fixed key, no feature changes) will be packaged right after v2.1, solely so the founder can run the install-over proof on both phones. It is expected; it is not a bug fix.
+
+### v2.1 acceptance additions (verified at CI / on phone — see UPDATE_INSTRUCTIONS.md)
+
+| # | Criterion | How |
+|---|---|---|
+| 16 | Keyboard: nav hidden while typing, CTA reachable by scroll | Phone check in UPDATE_INSTRUCTIONS |
+| 17 | Banner visible at the bottom of Home again | Phone screenshot |
+| 18 | Preview = sent text; "Ayesha — kurta" fills name + item; no raw `{}` anywhere | Phone check |
+| 19 | Chips: preferred/country language first; "No template" last | Phone check |
+| 20 | Recents card: dot + outline badge, template as plain text | Phone screenshot |
+| 21 | Signing: run page says `SIGNING: FIXED KEY` | Actions run page / job summary |
+| 22 | Install-over proof: v2.1.1 over v2.1 keeps the Recent, on BOTH phones | Multi-device protocol |
+
 ## v2.0 (built on the v1 codebase — no architecture rewrite)
 
 Worked in the founder's order: **(1) database schema, (2) UI files, (3) manifest + resources.**

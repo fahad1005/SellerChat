@@ -165,6 +165,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         homeNumber.value = found
     }
 
+    // ---- Template filling (v2.1: smart auto-fill) ----
+
+    /**
+     * THE template fill — the single code path behind the Home preview
+     * AND every send (Open chat, Copy wa.me link, Show QR, Try Demo),
+     * so what the seller sees in the preview is byte-for-byte what the
+     * customer receives.
+     *
+     * The customer label is parsed as "Name — item": it is split on
+     * "—", "–", " - " or ",", the first segment becomes {name} and the
+     * second becomes {item} ("Ayesha — kurta" → Ayesha / kurta). No
+     * separator → the whole label is {name} and {item} is blank.
+     * {price} / {qty} are blanked, and afterwards ANY leftover {...}
+     * token (a custom placeholder, a typo) is stripped — a customer
+     * never sees a raw bracket.
+     */
+    fun filledTemplateText(template: Template?): String {
+        if (template == null) return ""
+        val parts = homeLabel.value.trim()
+            .split(Regex("\\s*[—–]\\s*|\\s+-\\s+|\\s*,\\s*"))
+        val name = parts.getOrNull(0)?.trim().orEmpty()
+        val item = parts.getOrNull(1)?.trim().orEmpty()
+        var out = template.body
+            .replace("{name}", name)
+            .replace("{item}", item)
+            .replace("{price}", "")
+            .replace("{qty}", "")
+        out = out.replace(Regex("\\{[^}]*\\}"), "")
+        out = out.replace(Regex(" {2,}"), " ").trim()
+        return out
+    }
+
     // ---- Chat launching ----
 
     /**
@@ -207,7 +239,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         val pk = Countries.byIso("PK") ?: selectedCountry.value
         val e164 = PhoneUtils.normalize("+92 300 1234567", pk) ?: return false
-        val text = template?.let { PhoneUtils.applyTemplate(it.body, "") } ?: ""
+        val text = filledTemplateText(template)
         return openChat(pkg, e164, text)
     }
 

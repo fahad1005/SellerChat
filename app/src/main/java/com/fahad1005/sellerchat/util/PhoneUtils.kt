@@ -70,15 +70,7 @@ object PhoneUtils {
         return if (text.isBlank()) base else base + "?text=" + Uri.encode(text)
     }
 
-    /** Replace template placeholders. {name} gets the label; {price},
-     *  {item}, {qty} are blanked — raw placeholders never reach a customer. */
-    fun applyTemplate(body: String, label: String): String {
-        var out = body
-            .replace("{name}", label)
-            .replace("{price}", "")
-            .replace("{item}", "")
-            .replace("{qty}", "")
-        out = out.replace(Regex(" {2,}"), " ").trim()
-        return out
-    }
+    // Template placeholder filling lives in MainViewModel.filledTemplateText
+    // (v2.1): ONE shared function behind the Home preview and every send,
+    // so this file deliberately has no second fill implementation.
 }

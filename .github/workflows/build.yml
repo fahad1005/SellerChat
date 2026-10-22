@@ -4,12 +4,28 @@
 # builds the app by itself." You push a commit → GitHub builds the APKs →
 # you download them from the Actions tab. No Android Studio needed on your PC.
 #
-# It builds BOTH:
+# It builds THREE files:
 #   - app-debug.apk    → install and test the app.
-#   - app-release.apk  → the size-measurement build (minified with R8). CI
-#     signs it with a throwaway key made on the runner, ONLY so the file is
-#     a real installable APK whose size can be measured. It is NOT your
-#     release key — the real store build uses your own key / Play App Signing.
+#   - app-release.apk  → the size-measurement build (minified with R8).
+#   - app-release.aab  → the Google Play upload file (same build, bundle form).
+#
+# SIGNING — READ THE RUN PAGE. Every run prints ONE line, in the
+# "Prepare signing" step, in the "Report build sizes and signing mode"
+# step, and in the job summary at the top of the run page:
+#   SIGNING: FIXED KEY                          → signed with YOUR permanent
+#                                                 key (from repo secrets).
+#                                                 Only builds like this can
+#                                                 update each other.
+#   SIGNING: THROWAWAY FALLBACK (secrets not set) → signed with a one-off key
+#                                                 made on the runner. Fine for
+#                                                 measuring size; NOT your
+#                                                 release key, and it can
+#                                                 never update a FIXED KEY
+#                                                 install (or even another
+#                                                 fallback build).
+# The key itself lives ONLY in the repo secrets (SIGNING_KEYSTORE_B64,
+# SIGNING_STORE_PASSWORD, SIGNING_KEY_PASSWORD) — see UPDATE_INSTRUCTIONS.md
+# for the one-time setup. It is never printed and never committed.
 
 name: Build APK
 
@@ -46,28 +62,66 @@ jobs:
         with:
           gradle-version: 8.9
 
-      # Throwaway keystore for the CI release build (size measurement only).
-      - name: Generate CI-only keystore
-        run: |
-          keytool -genkeypair -v \
-            -keystore "$RUNNER_TEMP/ci.keystore" \
-            -storepass android -keypass android \
-            -alias ci -keyalg RSA -keysize 2048 -validity 3650 \
-            -dname "CN=SellerChat CI, O=CI, C=PK"
-
-      - name: Build the app (debug + release APK)
+      # Signing: if the founder's keystore secret exists, decode it to a
+      # temp file on the runner (never printed, never committed) and hand
+      # its PATH to Gradle via the environment. The keystore is a PKCS12
+      # file (sellerchat.p12) — JDK 17's default keystore type is PKCS12,
+      # and Gradle's "permanent" signing config also pins storeType
+      # PKCS12, so nothing anywhere assumes JKS. Otherwise make the
+      # throwaway fallback key, exactly like earlier builds did.
+      - name: Prepare signing (fixed key from secrets, else throwaway fallback)
         env:
-          SELLERCHAT_DEBUG_KEYSTORE: ${{ runner.temp }}/ci.keystore
-        run: gradle :app:assembleDebug :app:assembleRelease
-
-      - name: Report APK sizes
+          SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
         run: |
-          echo "=== APK SIZE REPORT (budget: release < 5 MB = 5000000 bytes) ==="
-          ls -la app/build/outputs/apk/debug/ app/build/outputs/apk/release/
-          for f in app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/release/app-release.apk; do
+          if [ -n "$SIGNING_KEYSTORE_B64" ]; then
+            echo "$SIGNING_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/sellerchat.p12"
+            {
+              echo "SELLERCHAT_SIGNING_KEYSTORE=$RUNNER_TEMP/sellerchat.p12"
+              echo "SIGNING_MODE=FIXED KEY"
+            } >> "$GITHUB_ENV"
+            echo "SIGNING: FIXED KEY"
+          else
+            keytool -genkeypair -v \
+              -keystore "$RUNNER_TEMP/ci.keystore" \
+              -storepass android -keypass android \
+              -alias ci -keyalg RSA -keysize 2048 -validity 3650 \
+              -dname "CN=SellerChat CI, O=CI, C=PK" > /dev/null 2>&1
+            {
+              echo "SELLERCHAT_DEBUG_KEYSTORE=$RUNNER_TEMP/ci.keystore"
+              echo "SIGNING_MODE=THROWAWAY FALLBACK (secrets not set)"
+            } >> "$GITHUB_ENV"
+            echo "SIGNING: THROWAWAY FALLBACK (secrets not set)"
+          fi
+
+      - name: Build the app (debug + release APK + release AAB)
+        env:
+          # Only the PASSWORDS ride along here, straight from secrets to
+          # Gradle's environment — they are never written to disk or logs.
+          # (Empty when the secrets are not set; the fallback path ignores
+          # them.) The keystore path arrives via $GITHUB_ENV from the
+          # "Prepare signing" step above.
+          SELLERCHAT_SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SELLERCHAT_SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: gradle :app:assembleDebug :app:assembleRelease :app:bundleRelease
+
+      - name: Report build sizes and signing mode
+        run: |
+          echo "SIGNING: $SIGNING_MODE"
+          {
+            echo "## Build report"
+            echo ""
+            echo "**SIGNING: $SIGNING_MODE**"
+            echo ""
+            echo "Size budget: release < 5 MB = 5,000,000 bytes."
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "=== SIZE REPORT (budget: release < 5 MB = 5000000 bytes) ==="
+          ls -la app/build/outputs/apk/debug/ app/build/outputs/apk/release/ app/build/outputs/bundle/release/
+          for f in app/build/outputs/apk/release/app-release.apk app/build/outputs/bundle/release/app-release.aab app/build/outputs/apk/debug/app-debug.apk; do
             if [ -f "$f" ]; then
               SIZE=$(stat -c%s "$f")
               echo "$f -> $SIZE bytes"
+              echo "- $f -> $SIZE bytes" >> "$GITHUB_STEP_SUMMARY"
             fi
           done
 
@@ -78,3 +132,4 @@ jobs:
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/bundle/release/app-release.aab

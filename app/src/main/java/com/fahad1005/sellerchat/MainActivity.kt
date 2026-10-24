@@ -81,9 +81,13 @@ class MainActivity : ComponentActivity() {
      *  text pre-filled — the seller still taps send in WhatsApp.
      *  The extras are consumed so a later resume doesn't re-fire. */
     private fun handleScheduledIntent(intent: Intent?) {
+        // v2.6 fix: the old `?: -1L` did NOT prove intent non-null to the
+        // compiler, so every bare intent.* call below failed to compile.
+        // `?: return` does prove it (null intent and missing id both
+        // return, exactly as before).
         val id = intent?.getLongExtra(
             com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_ID, -1L
-        ) ?: -1L
+        ) ?: return
         if (id < 0L) return
         val number = intent.getStringExtra(
             com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_NUMBER

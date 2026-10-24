@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -43,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -76,15 +78,19 @@ private val WaitingOrange = Color(0xFFEF6C00)
 fun statusLabel(status: RecentStatus): String = when (status) {
     RecentStatus.INQUIRY -> "Inquiry"
     RecentStatus.ORDERED -> "Ordered"
-    RecentStatus.PAID -> "Paid"
+    RecentStatus.PACKED -> "Packed"
     RecentStatus.SHIPPED -> "Shipped"
+    RecentStatus.DELIVERED -> "Delivered"
+    RecentStatus.PAID -> "Paid"
 }
 
 private fun nextStatus(status: RecentStatus): RecentStatus = when (status) {
     RecentStatus.INQUIRY -> RecentStatus.ORDERED
-    RecentStatus.ORDERED -> RecentStatus.PAID
-    RecentStatus.PAID -> RecentStatus.SHIPPED
-    RecentStatus.SHIPPED -> RecentStatus.INQUIRY
+    RecentStatus.ORDERED -> RecentStatus.PACKED
+    RecentStatus.PACKED -> RecentStatus.SHIPPED
+    RecentStatus.SHIPPED -> RecentStatus.DELIVERED
+    RecentStatus.DELIVERED -> RecentStatus.PAID
+    RecentStatus.PAID -> RecentStatus.INQUIRY
 }
 
 /** "Waiting 25m" / "Waiting 3h 20m" / "Waiting 2d 4h" (spec §2C). */
@@ -104,6 +110,9 @@ private fun waitingText(statusChangedAt: Long, now: Long): String {
 fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
     val recents by vm.recents.collectAsState()
     val allRecents by vm.recentsAll.collectAsState()
+    // v2.6: khata entries feed the Follow-up-today section (past-due
+    // udhaar for the selected shop) alongside waiting recents.
+    val khataEntries by vm.khataEntries.collectAsState()
     val query by vm.recentSearchQuery.collectAsState()
     // Amounts follow the seller's configured currency (Settings →
     // Region & Currency), NOT the phone country: the v2.3 currency
@@ -135,6 +144,24 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
     // picker; a failed forward reuses Home's error copy.
     var forwardListOpen by remember { mutableStateOf(false) }
     var forwardFailed by remember { mutableStateOf(false) }
+    // v2.5 media: picked file + caption-less send to this customer.
+    // Failure falls back to opening the chat and telling the seller
+    // to attach the file inside WhatsApp (see mediaFallbackNote).
+    var mediaFor by remember { mutableStateOf<Recent?>(null) }
+    var mediaFallbackNote by remember { mutableStateOf(false) }
+    val mediaPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        val target = mediaFor
+        mediaFor = null
+        if (uri != null && target != null) {
+            val ok = vm.sendMedia(target.appPackage, target.numberE164, uri, "")
+            if (!ok) {
+                vm.openChat(target.appPackage, target.numberE164, "")
+                mediaFallbackNote = true
+            }
+        }
+    }
     var renaming by remember { mutableStateOf<Recent?>(null) }
     var renameText by remember { mutableStateOf("") }
     var memoFor by remember { mutableStateOf<Recent?>(null) }
@@ -194,6 +221,88 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+
+        // ---- Follow up today (v2.6, AUTOMATIC — no per-customer
+        // setup): waiting customers older than 2 days, plus khata
+        // customers past their payment due date with a balance
+        // still owed. One tap opens WhatsApp pre-filled — the
+        // seller still taps send there. The manual "Follow-up in
+        // 2 days" reminders below are untouched.
+        run {
+            val twoDaysAgo = now - 2L * 24 * 3_600_000L
+            val waitingOld = allRecents.filter {
+                it.status == RecentStatus.INQUIRY && it.statusChangedAt <= twoDaysAgo
+            }
+            val overdueCustomers = khataEntries
+                .filter { it.dueAt != null && it.dueAt <= now }
+                .groupBy { it.customerNumber }
+                .mapNotNull { (number, rows) ->
+                    val balance = vm.khataBalance(rows)
+                    if (balance > 0) Triple(
+                        number,
+                        rows.first().customerName,
+                        balance
+                    ) else null
+                }
+            if (waitingOld.isNotEmpty() || overdueCustomers.isNotEmpty()) {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Follow up today",
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        for (recent in waitingOld) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = (recent.label.ifBlank { recent.numberE164 } +
+                                        " — waiting"),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = {
+                                    val who = recent.label.ifBlank { recent.numberE164 }
+                                    val text = "Hello $who, just checking in — " +
+                                        "is there anything you need for your order?"
+                                    if (vm.openChat(recent.appPackage, recent.numberE164, text)) {
+                                        vm.recordRecent(
+                                            recent.numberE164, recent.label,
+                                            recent.appPackage, recent.templateTitle
+                                        )
+                                    }
+                                }) { Text("Send") }
+                            }
+                        }
+                        for ((number, name, balance) in overdueCustomers) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = (name.ifBlank { number } + " — payment overdue: " +
+                                        vm.khataBalanceText(balance)),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = {
+                                    val pkg = allRecents
+                                        .firstOrNull { it.numberE164 == number }
+                                        ?.appPackage
+                                        ?: vm.settings.defaultAppPackage
+                                        ?: WhatsAppPackages.WHATSAPP
+                                    val text = vm.khataReminderText(name, balance)
+                                    if (vm.openChat(pkg, number, text)) {
+                                        vm.recordRecent(number, name, pkg, null)
+                                    }
+                                }) { Text("Send") }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         OutlinedTextField(
             value = query,
@@ -337,6 +446,11 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
                         // Re-open the chat with NO template pre-filled.
                         vm.openChat(sheet.appPackage, sheet.numberE164, "")
                     }
+                    SheetAction("Send photo/file") {
+                        mediaFor = sheet
+                        sheetFor = null
+                        mediaPicker.launch("*/*")
+                    }
                     SheetAction("Follow-up in 2 days") {
                         sheetFor = null
                         requestFollowUp(sheet)
@@ -398,6 +512,23 @@ fun RecentsScreen(vm: MainViewModel, onOpenSettings: () -> Unit = {}) {
             confirmButton = {},
             dismissButton = {
                 TextButton(onClick = { forwardFailed = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // ---- Media fallback note (v2.5) ----
+    if (mediaFallbackNote) {
+        AlertDialog(
+            onDismissRequest = { mediaFallbackNote = false },
+            title = { Text("File not attached") },
+            text = {
+                Text(
+                    "WhatsApp opened without the file — " +
+                        "attach it in WhatsApp before sending."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { mediaFallbackNote = false }) { Text("OK") }
             }
         )
     }
@@ -599,19 +730,21 @@ private fun RecentRow(
 }
 
 /** Status colors (v2.1 task 5): INQUIRY shares the waiting clock's
- *  orange so the card reads as one system; ORDERED blue, PAID green,
- *  SHIPPED purple. */
+ *  orange so the card reads as one system; ORDERED blue, PACKED
+ *  teal, SHIPPED purple, DELIVERED indigo, PAID green. */
 private fun statusColor(status: RecentStatus): Color = when (status) {
     RecentStatus.INQUIRY -> WaitingOrange
     RecentStatus.ORDERED -> Color(0xFF1565C0)
-    RecentStatus.PAID -> Color(0xFF2E7D32)
+    RecentStatus.PACKED -> Color(0xFF00838F)
     RecentStatus.SHIPPED -> Color(0xFF6A1B9A)
+    RecentStatus.DELIVERED -> Color(0xFF283593)
+    RecentStatus.PAID -> Color(0xFF2E7D32)
 }
 
 /** The status indicator: a small colored dot + a thin outline badge.
  *  Visually small, but the tap target is a full 48dp tall (padding
- *  around the badge) — tap cycles Inquiry → Ordered → Paid → Shipped,
- *  exactly like the v2 pill did. */
+ *  around the badge) — tap cycles Inquiry → Ordered → Packed →
+ *  Shipped → Delivered → Paid, exactly like the v2 pill did. */
 @Composable
 private fun StatusBadge(status: RecentStatus, onClick: () -> Unit) {
     val color = statusColor(status)

@@ -25,6 +25,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.fahad1005.sellerchat.BuildConfig
+import com.fahad1005.sellerchat.data.Business
 import com.fahad1005.sellerchat.data.RecentStatus
 import com.fahad1005.sellerchat.data.SettingsStore
 import com.fahad1005.sellerchat.data.TemplateLanguage
@@ -65,7 +67,7 @@ fun templateLanguageLabel(language: TemplateLanguage): String = when (language) 
 }
 
 /** TODO(FAHAD): replace with the real hosted privacy policy URL. */
-private const val PRIVACY_POLICY_URL = "https://example.com/sellerchat/privacy-policy"
+private const val PRIVACY_POLICY_URL = "https://fahad1005.github.io/SellerChat/privacy-policy.html"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +92,25 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
     var teamName by remember { mutableStateOf("") }
     var teamNumber by remember { mutableStateOf("") }
     var teamError by remember { mutableStateOf<String?>(null) }
+    // v2.5 assisted Greeting / Away (suggestions only — nothing here
+    // sends anything by itself; see BUILD_NOTES boundary note).
+    var greetingEnabled by remember { mutableStateOf(vm.settings.greetingEnabled) }
+    var greetingMessage by remember { mutableStateOf(vm.settings.greetingMessage) }
+    var awayEnabled by remember { mutableStateOf(vm.settings.awayEnabled) }
+    var awayMessage by remember { mutableStateOf(vm.settings.awayMessage) }
+    var awayOpenHour by remember { mutableStateOf(vm.settings.awayOpenHour) }
+    var awayCloseHour by remember { mutableStateOf(vm.settings.awayCloseHour) }
+    var openHourMenu by remember { mutableStateOf(false) }
+    var closeHourMenu by remember { mutableStateOf(false) }
+    // v2.6 multi-business management (no new screen — a section here).
+    val businesses by vm.businesses.collectAsState()
+    val selectedBusinessId by vm.selectedBusinessId.collectAsState()
+    val manageNote by vm.businessManageNote.collectAsState()
+    var newBizName by remember { mutableStateOf("") }
+    var newBizCurrency by remember { mutableStateOf(vm.settings.currencyCode) }
+    var newBizCurrencyMenu by remember { mutableStateOf(false) }
+    var renameTarget by remember { mutableStateOf<Business?>(null) }
+    var renameText by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -349,6 +370,226 @@ fun SettingsScreen(vm: MainViewModel, onBack: () -> Unit) {
                     ) { Text("Add teammate") }
                 }
             }
+
+            // Manage businesses (v2.6): one app, several shops.
+            // Money (khata, invoices, products, expenses) is per
+            // shop; customers, templates and scheduled messages are
+            // global — one person can buy from both shops. Delete
+            // is refused while a shop still holds records, with an
+            // honest note explaining why.
+            Text("Manage businesses", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "Each shop keeps its own money books. Customers, " +
+                    "templates and scheduled messages are shared across shops.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                businesses.forEach { biz ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = biz.name + " (" + biz.currency + ")" +
+                                if (biz.id == selectedBusinessId) " · current" else "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            renameTarget = biz
+                            renameText = biz.name
+                        }) { Text("Rename") }
+                        TextButton(onClick = { vm.deleteBusiness(biz) }) {
+                            Text("Delete")
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = newBizName,
+                    onValueChange = { newBizName = it },
+                    label = { Text("New shop name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Currency: $newBizCurrency",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedButton(onClick = { newBizCurrencyMenu = true }) {
+                        Text("Change")
+                        Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+                    }
+                    DropdownMenu(
+                        expanded = newBizCurrencyMenu,
+                        onDismissRequest = { newBizCurrencyMenu = false }
+                    ) {
+                        for (option in CurrencyUtils.supportedCurrencies) {
+                            DropdownMenuItem(
+                                text = { Text("${option.code} (${option.symbol})") },
+                                onClick = {
+                                    newBizCurrency = option.code
+                                    newBizCurrencyMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = {
+                        if (newBizName.isNotBlank()) {
+                            vm.addBusiness(newBizName, newBizCurrency)
+                            newBizName = ""
+                        }
+                    },
+                    enabled = newBizName.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Add shop") }
+                manageNote?.let { note ->
+                    Text(
+                        text = note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    TextButton(onClick = { vm.businessManageNote.value = null }) {
+                        Text("Dismiss")
+                    }
+                }
+            }
+            val renameBiz = renameTarget
+            if (renameBiz != null) {
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { renameTarget = null },
+                    title = { Text("Rename shop") },
+                    text = {
+                        OutlinedTextField(
+                            value = renameText,
+                            onValueChange = { renameText = it },
+                            label = { Text("Shop name") },
+                            singleLine = true
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            if (renameText.isNotBlank()) {
+                                vm.renameBusiness(renameBiz, renameText)
+                            }
+                            renameTarget = null
+                        }) { Text("Save") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { renameTarget = null }) { Text("Cancel") }
+                    }
+                )
+            }
+
+            // Greeting & Away (v2.5, ASSISTED — not auto-reply):
+            // the greeting is suggested for first contacts and the away
+            // text is offered as a one-tap send outside business hours.
+            // Nothing here watches notifications or sends in the
+            // background; true hands-free auto-reply needs the WhatsApp
+            // Business API and is out of scope (see BUILD_NOTES).
+            Text("Greeting & Away", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "Assisted only: these texts are suggested for one-tap sending. " +
+                    "SellerChat never replies or sends on its own.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Suggest greeting for new customers")
+                Switch(
+                    checked = greetingEnabled,
+                    onCheckedChange = {
+                        greetingEnabled = it
+                        vm.settings.greetingEnabled = it
+                    }
+                )
+            }
+            OutlinedTextField(
+                value = greetingMessage,
+                onValueChange = {
+                    greetingMessage = it
+                    vm.settings.greetingMessage = it
+                },
+                label = { Text("Greeting message") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Away mode outside business hours")
+                Switch(
+                    checked = awayEnabled,
+                    onCheckedChange = {
+                        awayEnabled = it
+                        vm.settings.awayEnabled = it
+                    }
+                )
+            }
+            OutlinedTextField(
+                value = awayMessage,
+                onValueChange = {
+                    awayMessage = it
+                    vm.settings.awayMessage = it
+                },
+                label = { Text("Away message") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { openHourMenu = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Opens: $awayOpenHour:00") }
+                    DropdownMenu(
+                        expanded = openHourMenu,
+                        onDismissRequest = { openHourMenu = false }
+                    ) {
+                        (0..23).forEach { hour ->
+                            DropdownMenuItem(
+                                text = { Text("$hour:00") },
+                                onClick = {
+                                    awayOpenHour = hour
+                                    vm.settings.awayOpenHour = hour
+                                    openHourMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { closeHourMenu = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Closes: $awayCloseHour:00") }
+                    DropdownMenu(
+                        expanded = closeHourMenu,
+                        onDismissRequest = { closeHourMenu = false }
+                    ) {
+                        (0..23).forEach { hour ->
+                            DropdownMenuItem(
+                                text = { Text("$hour:00") },
+                                onClick = {
+                                    awayCloseHour = hour
+                                    vm.settings.awayCloseHour = hour
+                                    closeHourMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+            Text(
+                text = "Tip: an open hour later than the close hour means overnight hours (e.g. 20 → 2).",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
 
             // Privacy block
             Card(modifier = Modifier.fillMaxWidth()) {

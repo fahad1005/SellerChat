@@ -149,6 +149,61 @@ class SettingsStore(context: Context) {
         get() = prefs.getBoolean(KEY_SEEDS_V5_DONE, false)
         set(value) = prefs.edit().putBoolean(KEY_SEEDS_V5_DONE, value).apply()
 
+    // ---- v2.6 additions: multi-business ----
+
+    /** Id of the currently selected business ("default" = My
+     *  Business). Money figures, khata, invoices, products and
+     *  expenses all filter on this value; customers, templates and
+     *  scheduled messages ignore it (they are global). */
+    var selectedBusinessId: String
+        get() = prefs.getString(KEY_SELECTED_BUSINESS, null) ?: "default"
+        set(value) = prefs.edit().putString(KEY_SELECTED_BUSINESS, value).apply()
+
+    // ---- v2.5 additions: assisted Greeting / Away ----
+
+    /** One-time v2.5 seed pass done flag: the editable built-in
+     *  "Greeting" and "Away" templates are appended to the library
+     *  exactly once (see MainViewModel init). They are ordinary
+     *  templates afterwards — the seller may edit or delete them. */
+    var seedsV6Done: Boolean
+        get() = prefs.getBoolean(KEY_SEEDS_V6_DONE, false)
+        set(value) = prefs.edit().putBoolean(KEY_SEEDS_V6_DONE, value).apply()
+
+    /** Assisted greeting: when on, opening a chat for a customer with
+     *  no prior Recent suggests the greeting text on Home for
+     *  one-tap sending. This is a SUGGESTION, never an auto-send —
+     *  see the boundary note in BUILD_NOTES (v2.5). */
+    var greetingEnabled: Boolean
+        get() = prefs.getBoolean(KEY_GREETING_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_GREETING_ENABLED, value).apply()
+
+    var greetingMessage: String
+        get() = prefs.getString(KEY_GREETING_MESSAGE, null)
+            ?: DEFAULT_GREETING_MESSAGE
+        set(value) = prefs.edit().putString(KEY_GREETING_MESSAGE, value).apply()
+
+    /** Assisted away mode: when on and the current hour is outside
+     *  [awayOpenHour] (inclusive) .. [awayCloseHour] (exclusive),
+     *  Home shows an "Away mode" banner and offers the away text
+     *  for one-tap sending. Hours are 0–23; an open hour AFTER the
+     *  close hour means overnight hours (e.g. 20 → 2). */
+    var awayEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AWAY_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_AWAY_ENABLED, value).apply()
+
+    var awayMessage: String
+        get() = prefs.getString(KEY_AWAY_MESSAGE, null)
+            ?: DEFAULT_AWAY_MESSAGE
+        set(value) = prefs.edit().putString(KEY_AWAY_MESSAGE, value).apply()
+
+    var awayOpenHour: Int
+        get() = prefs.getInt(KEY_AWAY_OPEN_HOUR, 9)
+        set(value) = prefs.edit().putInt(KEY_AWAY_OPEN_HOUR, value.coerceIn(0, 23)).apply()
+
+    var awayCloseHour: Int
+        get() = prefs.getInt(KEY_AWAY_CLOSE_HOUR, 17)
+        set(value) = prefs.edit().putInt(KEY_AWAY_CLOSE_HOUR, value.coerceIn(0, 23)).apply()
+
     /** Up to [MAX_TEAMMATES] teammates for "Forward to Teammate"
      *  (Recents sheet). Stored in fixed slots team_name_1..3 /
      *  team_number_1..3 — three scalars are all a hand-over list
@@ -191,6 +246,7 @@ class SettingsStore(context: Context) {
     private fun teamNumberKey(slot: Int) = "team_number_$slot"
 
     companion object {
+        private const val KEY_SELECTED_BUSINESS = "selected_business_id"
         private const val KEY_FIRST_RUN_DONE = "first_run_done"
         private const val KEY_COUNTRY_ISO = "country_iso"
         private const val KEY_DEFAULT_APP = "default_app_package"
@@ -202,6 +258,22 @@ class SettingsStore(context: Context) {
         private const val KEY_SEEDS_V2_DONE = "seeds_v2_done"
         private const val KEY_SEEDS_V3_DONE = "seeds_v3_done"
         private const val KEY_SEEDS_V5_DONE = "seeds_v5_done"
+        private const val KEY_SEEDS_V6_DONE = "seeds_v6_done"
+        private const val KEY_GREETING_ENABLED = "greeting_enabled"
+        private const val KEY_GREETING_MESSAGE = "greeting_message"
+        private const val KEY_AWAY_ENABLED = "away_enabled"
+        private const val KEY_AWAY_MESSAGE = "away_message"
+        private const val KEY_AWAY_OPEN_HOUR = "away_open_hour"
+        private const val KEY_AWAY_CLOSE_HOUR = "away_close_hour"
+
+        /** Default assisted texts (v2.5). Plain, no placeholders —
+         *  placeholders in a greeting/away text would be stripped by
+         *  the send cleanup anyway; the seller can edit both in
+         *  Settings and as library templates. */
+        const val DEFAULT_GREETING_MESSAGE =
+            "Hello! Thanks for reaching out — how can I help you today?"
+        const val DEFAULT_AWAY_MESSAGE =
+            "Thanks for your message! We're currently closed and will reply during business hours."
         private const val KEY_REGION_INITIALIZED = "region_initialized"
         private const val KEY_CURRENCY_CODE = "currency_code"
         private const val KEY_SEEDS_V4_DONE = "seeds_v4_done"

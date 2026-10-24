@@ -95,7 +95,10 @@ private sealed interface EditorTarget {
 fun TemplatesScreen(
     vm: MainViewModel,
     pendingEdit: Template?,
-    onPendingEditConsumed: () -> Unit
+    onPendingEditConsumed: () -> Unit,
+    // v2.6: Templates is a pushed screen now (3-tab law), so it
+    // needs the same "← Back" row the other pushed screens have.
+    onBack: () -> Unit = {}
 ) {
     val templates by vm.templates.collectAsState()
     var languageFilter by remember { mutableStateOf<TemplateLanguage?>(null) }
@@ -156,6 +159,9 @@ fun TemplatesScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
+            Text("← Back")
+        }
         // Language filter tabs (v2.3: every template language + All,
         // including French / Spanish / العربية / 中文). The row scrolls
         // horizontally — the full set no longer fits one line.

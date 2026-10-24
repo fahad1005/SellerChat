@@ -42,10 +42,22 @@ private sealed interface Route {
     data class Qr(val number: String, val message: String) : Route
     data object ShareStatus : Route
     data object Settings : Route
+    // v2.5 business tools: pushed screens, each one tap from the
+    // "Business tools" row on Home or Money (two taps from any tab).
+    data object Invoices : Route
+    data object Catalog : Route
+    data object Scheduled : Route
+    // v2.6: Templates is no longer a tab (the 3-tab law: Sell /
+    // Customers / Money only) — it is a pushed screen from Home,
+    // and the template-preview "Edit" flow lands here too.
+    data object Templates : Route
+    // v2.6: one customer's khata ledger, pushed from the Money tab.
+    data class KhataDetail(val number: String, val name: String) : Route
 }
 
-/** App root: first-run gate, then the three-tab shell (Home / Recents /
- *  Templates) with QR, Share-to-Status and Settings as pushed screens. */
+/** App root: first-run gate, then the three-tab shell (Sell /
+ *  Customers / Money) with QR, Share-to-Status, Settings, the
+ *  business tools, Templates and Khata detail as pushed screens. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SellerChatRoot(vm: MainViewModel) {
@@ -75,6 +87,13 @@ fun SellerChatRoot(vm: MainViewModel) {
     var overflowOpen by remember { mutableStateOf(false) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
+    // Tab jumps from the Home Today card and the Money links:
+    // back to the shell, on the requested tab.
+    fun goToTab(index: Int) {
+        route = Route.Main
+        tab = index
+    }
+
     when (val r = route) {
         is Route.Qr -> QrScreen(
             initialNumberE164 = r.number,
@@ -83,6 +102,21 @@ fun SellerChatRoot(vm: MainViewModel) {
         )
         is Route.ShareStatus -> ShareStatusScreen(vm = vm, onBack = { route = Route.Main })
         is Route.Settings -> SettingsScreen(vm = vm, onBack = { route = Route.Main })
+        is Route.Invoices -> InvoicesScreen(vm = vm, onBack = { route = Route.Main })
+        is Route.Catalog -> CatalogScreen(vm = vm, onBack = { route = Route.Main })
+        is Route.Scheduled -> ScheduledScreen(vm = vm, onBack = { route = Route.Main })
+        is Route.Templates -> TemplatesScreen(
+            vm = vm,
+            pendingEdit = pendingEdit,
+            onPendingEditConsumed = { pendingEdit = null },
+            onBack = { route = Route.Main }
+        )
+        is Route.KhataDetail -> KhataDetailScreen(
+            vm = vm,
+            number = r.number,
+            name = r.name,
+            onBack = { route = Route.Main }
+        )
         is Route.Main -> {
             Scaffold(
                 topBar = {
@@ -127,19 +161,19 @@ fun SellerChatRoot(vm: MainViewModel) {
                             selected = tab == 0,
                             onClick = { tab = 0 },
                             icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-                            label = { Text("Home") }
+                            label = { Text("Sell") }
                         )
                         NavigationBarItem(
                             selected = tab == 1,
                             onClick = { tab = 1 },
                             icon = { Icon(painter = painterResource(R.drawable.ic_history), contentDescription = null) },
-                            label = { Text("Recents") }
+                            label = { Text("Customers") }
                         )
                         NavigationBarItem(
                             selected = tab == 2,
                             onClick = { tab = 2 },
                             icon = { Icon(painter = painterResource(R.drawable.ic_description), contentDescription = null) },
-                            label = { Text("Templates") }
+                            label = { Text("Money") }
                         )
                     }
                     } // end if (!imeVisible)
@@ -155,17 +189,27 @@ fun SellerChatRoot(vm: MainViewModel) {
                             onShareStatus = { route = Route.ShareStatus },
                             onEditTemplate = { template ->
                                 pendingEdit = template
-                                tab = 2
-                            }
+                                route = Route.Templates
+                            },
+                            onOpenInvoices = { route = Route.Invoices },
+                            onOpenCatalog = { route = Route.Catalog },
+                            onOpenScheduled = { route = Route.Scheduled },
+                            onManageTemplates = { route = Route.Templates },
+                            onGoToCustomers = { goToTab(1) },
+                            onGoToMoney = { goToTab(2) }
                         )
                         1 -> RecentsScreen(
                             vm = vm,
                             onOpenSettings = { route = Route.Settings }
                         )
-                        else -> TemplatesScreen(
+                        else -> MoneyScreen(
                             vm = vm,
-                            pendingEdit = pendingEdit,
-                            onPendingEditConsumed = { pendingEdit = null }
+                            onOpenInvoices = { route = Route.Invoices },
+                            onOpenCatalog = { route = Route.Catalog },
+                            onOpenScheduled = { route = Route.Scheduled },
+                            onOpenKhataDetail = { number, name ->
+                                route = Route.KhataDetail(number, name)
+                            }
                         )
                     }
                 }

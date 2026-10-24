@@ -1,4 +1,139 @@
-# SellerChat — v2.4 Update Steps (read this first)
+# SellerChat — v2.6 Update Steps (read this first — v2.6 SUPERSEDES v2.5)
+
+Fahad — upload **v2.6, not v2.5**. v2.5 was never installed, and v2.6 contains everything v2.5 had plus the winner pack: **full khata ledger** (udhaar / payment / advance per customer, partial payments, due-date reminders, shareable statements), **multi-business** (run several shops in one app — money books are per shop, customers/templates/scheduled are shared; your existing data opens under "My Business" with zero action), a **Money tab** (Today card: sales, owed, expenses, profit), a **Today card on Sell**, **auto follow-up suggestions** (waiting 2+ days + overdue khata, no setup), **multichannel open-chat** (Telegram / Messenger / SMS links — opens those apps, does NOT receive messages inside SellerChat), an **inline discount calculator**, a **Share-my-shop card + ad link**, and **delivery stages** (Packed, Delivered). It installs **over v2.4.1** (or over any earlier version) — no uninstall. Your Recents, templates, statuses, memos, invoices and products all survive: the database change adds new tables and one new column (businessId, defaulted) on three existing tables — nothing is deleted or rewritten.
+
+**What v2.6 deliberately does NOT do:** it does not receive messages inside the app, and nothing sends itself — Telegram/Messenger open those apps without a pre-filled message, and reminders open WhatsApp pre-filled for your tap. Anyone promising a free in-app WhatsApp inbox is selling a ban risk.
+
+## Section 1 — Upload the v2.6 files
+
+1. Unzip the v2.6 package.
+2. In the SellerChat repo, **Add file → Upload files** and drag in everything from the unzipped folder. You should see **20 files** (paths are repo-relative, so files land on top of their old versions):
+   - `app/build.gradle.kts` (version 2.6 / code 11, Play API 36)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/KhataEntities.kt` (NEW — businesses + khata + channel handles + expenses)
+   - `app/src/main/java/com/fahad1005/sellerchat/notify/KhataReminders.kt` (NEW — due-date reminders)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/MoneyScreen.kt` (NEW — Money tab + khata detail)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/Entities.kt` (Packed, Delivered statuses)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/BusinessEntities.kt` (businessId on invoices/lines/products)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/Daos.kt` (BusinessDao + per-shop queries)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/AppDatabase.kt` (database version 4)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/Migrations.kt` (migration 3 → 4)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SettingsStore.kt` (selected shop)
+   - `app/src/main/java/com/fahad1005/sellerchat/viewmodel/MainViewModel.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/MainActivity.kt` (khata reminder deep link)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/MainScreen.kt` (Sell / Customers / Money tabs)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/HomeScreen.kt` (Today card, discount, channel picker)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/RecentsScreen.kt` (delivery stages, Follow-up-today)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/SettingsScreen.kt` (Manage businesses)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/TemplatesScreen.kt` (Back button)
+   - `README.md`, `BUILD_NOTES.md`, `UPDATE_INSTRUCTIONS.md`
+   - There is **no** workflow file and **no** signing material in the zip — `build.yml` is unchanged since v2.4.1 (already Android 36) and your keys stay in repo secrets only. If the uploader skips nothing, fine; if it ever skips a file, re-upload that one file.
+3. Commit. Watch Actions: the build must print **`SIGNING: FIXED KEY`** and the release APK must be **under 5,000,000 bytes** (report both sizes). If the build goes red, send the first error text — do not guess.
+
+## Section 2 — Install OVER your current version (do NOT uninstall)
+
+1. Install the v2.6 **app-release.apk** straight over v2.4.1 — **no uninstall** (same permanent key). Your Recents, templates, invoices, products and statuses must all still be there, now under the "My Business" shop in the Money tab.
+2. If the app crashes on first open, or any old data is missing: stop, do NOT uninstall (uninstalling deletes the data we need to diagnose), and send the exact error or what is missing.
+
+## Section 3 — v2.6 phone checks (one per feature)
+
+- **Old data survives:** Recents, templates, invoices, products all present; Money tab header shows "My Business".
+- **Khata:** Money → "Add entry for a customer" → pick a customer → add Udhaar 1000, then Payment 400 (Cash) → balance reads "To receive 600". Add an Advance 200 → balance reads "To receive 400". Share statement → clean text with all entries + balance.
+- **Due reminder:** add Udhaar with due "Tomorrow" + "Remind me" on → allow notifications → (due-date behavior; the in-app due badge must show immediately).
+- **Multi-business:** Settings → Manage businesses → Add shop "Food" (PKR) → Money header switches to Food → khata/invoices/products show empty for Food, full for My Business. Switch back. Delete "Food" (empty) → allowed. Try deleting "My Business" (has records) → refused with an honest note.
+- **Today card:** Sell tab top card shows "Today · My Business" + owed figure matching the khata; tap Owed → Money tab; tap Waiting → Customers tab.
+- **Auto follow-ups:** Customers tab shows "Follow up today" for a customer waiting 2+ days (change a test customer's status date by waiting, or use an overdue khata entry) → Send opens WhatsApp pre-filled.
+- **Multichannel:** Sell → "Send on another app" → SMS → messaging app opens with text ready. Telegram with a username → Telegram opens (message NOT pre-filled — that is expected, the app says so). Telegram with a missing app → WhatsApp opens instead + note.
+- **Discount:** pick a product (Rs 500) → type 10% → preview shows "Rs 500 − 10% = Rs 450" and the sent template uses 450.
+- **Share my shop:** Money → Share my shop → enter your number + source "Instagram" → share → text lists products + prices + a wa.me link with "I saw your ad on Instagram".
+- **Delivery stages:** tap a customer's status chip repeatedly → Inquiry → Ordered → Packed → Shipped → Delivered → Paid → Inquiry.
+- **Templates still reachable:** Sell → Business tools → Templates → list opens; Back returns.
+
+# SellerChat — v2.5 Update Steps (read this first)
+
+Fahad — v2.5 is the **business-tools build**: **Invoices** (bill book with Unpaid/Paid + Mark Paid that feeds Pulse), **Product catalog** (your price list; pick a product on Home and it fills {item} and {price}), **Send photo/file to unsaved numbers** (WhatsApp opens with the file attached — you tap send there), **Scheduled messages** (a reminder at the time you pick — nothing sends itself), **Contact import + clipboard number chip** (no new permissions), and **assisted Greeting / Away** (suggested texts for new customers and closed hours — NOT auto-reply; nothing sends in the background). It installs **over** v2.4.1, no uninstall — your Recents, templates, statuses and memos all survive (the database change only adds new tables).
+
+## Section 1 — Upload the v2.5 files
+
+1. Unzip the v2.5 package.
+2. In the SellerChat repo, **Add file → Upload files** and drag in everything from the unzipped folder. You should see **21 files** (paths are repo-relative, so files land on top of their old versions):
+   - `app/build.gradle.kts` (version 2.5 / code 10, Play API 36)
+   - `gradle/libs.versions.toml` (AGP 8.9.1)
+   - `.github/workflows/build.yml` (Android 36 tools, Gradle 8.11.1) — if the uploader skips the `.github` folder (it did before), nothing is lost: this workflow is identical to the one already in the repo from v2.4.1. Only paste it via Add file → Create new file if the repo's workflow does NOT mention android-36.
+   - `app/src/main/java/com/fahad1005/sellerchat/data/BusinessEntities.kt` (NEW — invoices, products, scheduled messages)
+   - `app/src/main/java/com/fahad1005/sellerchat/data/Daos.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/data/Migrations.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/data/AppDatabase.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/data/SettingsStore.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/viewmodel/MainViewModel.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/notify/ScheduledMessages.kt` (NEW)
+   - `app/src/main/java/com/fahad1005/sellerchat/MainActivity.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/InvoicesScreen.kt` (NEW)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/CatalogScreen.kt` (NEW)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/ScheduledScreen.kt` (NEW)
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/HomeScreen.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/RecentsScreen.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/MainScreen.kt`
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/SettingsScreen.kt`
+   - `README.md`, `BUILD_NOTES.md`, `UPDATE_INSTRUCTIONS.md` (this file)
+   - There is **no signing material** in the package — your keys stay in repo secrets only.
+3. **Commit changes.** The build starts by itself.
+
+## Section 2 — Build and read the signing line (same as before)
+
+1. **Actions** tab → open the finished **Build APK** run.
+2. On the run page it must say **`SIGNING: FIXED KEY`** ✅ — anything else, stop and tell Bullet. A fallback build cannot install over your current app.
+3. The same step prints `app-release.apk -> N bytes` and `app-release.aab -> N bytes`. **Both must be under 5,000,000.** Tell Bullet both numbers.
+4. Green tick → **Artifacts → SellerChat-apks** → download → unzip → use **app-release.apk**.
+
+## Section 3 — Install OVER v2.4.1 (do NOT uninstall — your data is the test)
+
+Do it on **Phone 1**, then **Phone 2**:
+
+a. On the phone, open SellerChat (v2.4.1) → Recents → confirm your test customer is there. That's the data worth protecting.
+b. Install the v2.5 **app-release.apk** straight over it — **no uninstall** (same permanent key).
+c. Success = two things, both: **it installs** AND **your test Recent is still there**, with its status/memo intact. If anything is missing, tell Bullet before touching Phone 2.
+
+## Section 4 — v2.5 phone checks (one per feature)
+
+1. **Invoices:** Home → **Business tools → Invoices → New invoice** → pick a customer, add a line (item + amount) → Save → open it → **Send via WhatsApp** → WhatsApp opens with the invoice text (number, lines, total) typed, nothing sent by itself. Back in the app → **Mark Paid** → the invoice moves to Paid, and that customer in Recents shows **Paid** with the amount.
+2. **Catalog:** **Business tools → Catalog → Add product** (name + price) → back on **Home**, the product appears as a chip → tap it → the preview fills {item} and {price} → **Open chat** sends exactly the previewed text.
+3. **Send photo/file:** Home → type a valid number → **Send photo/file** → pick a photo → WhatsApp opens **with the photo attached** to that number's chat. (If WhatsApp opens without it, the app says so — attach it in WhatsApp and send.)
+4. **Scheduled:** **Business tools → Scheduled → Schedule a message** → pick a customer + a template + a time 2 minutes from now → allow the notification when asked → at that time a notification arrives → tap it → WhatsApp opens with the message typed → the item shows **Sent**. Nothing sends without your tap.
+5. **Clipboard + contacts:** copy a phone number from another app → return to SellerChat Home → a chip offers **"Number from clipboard — Use it"** → tap it → the number field fills. **Import from contacts** → pick a contact → number + name fill in.
+6. **Greeting / Away:** **Settings → Greeting & Away** → turn on **Greeting** → Home → type a brand-new number → a **"New customer — send the greeting?"** card appears → **Use greeting** → the preview shows the greeting → send it. For Away: set hours that exclude right now, turn Away on → Home shows the **Away mode** banner with **Send away message**.
+
+---
+
+# SellerChat — v2.4.1 Update Steps (read this first)
+
+Fahad — v2.4.1 is a **tiny one-purpose patch**: it points the app's **Privacy Policy** link at the real hosted page (**fahad1005.github.io/SellerChat/privacy-policy.html**) instead of the placeholder it shipped with. Nothing else changes — no features, no screens, no signing changes. It installs **over** v2.4, no uninstall.
+
+## Section 1 — Upload the v2.4.1 files
+
+1. Unzip **SellerChat-v2.4.1-updated-files.zip**.
+2. In the SellerChat repo, **Add file → Upload files** and drag in everything from the unzipped folder. You should see **4 files** (2 that change the app, 2 docs):
+   - `app/src/main/java/com/fahad1005/sellerchat/ui/SettingsScreen.kt` (the privacy-policy URL — nothing else in the file changed)
+   - `app/build.gradle.kts` (version 2.4.1 / code 9)
+   - `UPDATE_INSTRUCTIONS.md` (this file) and `BUILD_NOTES.md` (the v2.4.1 entry)
+   - There is **no** workflow file and **no signing material** in the zip.
+3. **Commit changes.** The build starts by itself.
+
+## Section 2 — Build and install (same as before)
+
+1. **Actions** tab → open the finished **Build APK** run → the run page must say **`SIGNING: FIXED KEY`** ✅. Anything else, stop and tell Bullet.
+2. **Artifacts → SellerChat-apks** → download → use **app-release.apk**.
+3. Install it **straight over** v2.4 on both phones — **no uninstall**, your Recents and templates stay put.
+
+## Section 3 — The one check
+
+1. In the app: **Settings → Privacy policy** (the link near the bottom). It should open **fahad1005.github.io/SellerChat/privacy-policy.html** in the browser.
+
+> **Order doesn't matter:** the in-app link only starts working once **both** things are done — (a) this patch is installed, and (b) **GitHub Pages is enabled** on the repo (in the *other* zip: upload the `docs/` folder, then repo **Settings → Pages → Build and deployment → Deploy from a branch → Branch: main, folder `/docs`** → Save). Do them in either order; the link goes live when the second one lands.
+
+---
+---
+
+# SellerChat — v2.4 Update Steps (kept for reference)
 
 Fahad — v2.4 is the **final bug-fix build** from user testing. Six fixes, logic only — no new screens, no design changes: **strict country-code validation** (a Pakistani number typed under +1 is now caught in the app, not in WhatsApp), **Forward to Team** with a proper hand-over message, a **parser that removes whole broken sentences** instead of leaving "The is." behind, the **Pulse bar now follows your currency setting instantly**, the "ka ka" fix now reaches **even templates you edited by hand**, and a **12 dp safety gap** between the Open chat button and the ad banner. Nothing about signing changes — your permanent key does all the work, and this build installs **over** v2.3.
 

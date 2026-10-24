@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.fahad1005.sellerchat.ui.SellerChatRoot
 import com.fahad1005.sellerchat.ui.theme.SellerChatTheme
 import com.fahad1005.sellerchat.viewmodel.MainViewModel
@@ -21,6 +23,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handleSendIntent(intent)
         handleFollowUpIntent(intent)
+        handleScheduledIntent(intent)
+        handleKhataIntent(intent)
         setContent {
             SellerChatTheme {
                 Surface(
@@ -38,6 +42,64 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         handleSendIntent(intent)
         handleFollowUpIntent(intent)
+        handleScheduledIntent(intent)
+        handleKhataIntent(intent)
+    }
+
+    /** Khata due-date notification deep link (v2.6): the
+     *  notification carries the entry id + customer. The reminder
+     *  text is built from the LIVE ledger at tap time (so a
+     *  payment made after scheduling is reflected, and a settled
+     *  debt opens nothing). Extras are consumed so a later resume
+     *  doesn't re-fire. */
+    private fun handleKhataIntent(intent: Intent?) {
+        val number = intent?.getStringExtra(
+            com.fahad1005.sellerchat.notify.KhataReminders.EXTRA_KHATA_NUMBER
+        ) ?: return
+        val name = intent.getStringExtra(
+            com.fahad1005.sellerchat.notify.KhataReminders.EXTRA_KHATA_NAME
+        ) ?: ""
+        val entryId = intent.getLongExtra(
+            com.fahad1005.sellerchat.notify.KhataReminders.EXTRA_KHATA_ENTRY_ID, -1L
+        )
+        intent.removeExtra(com.fahad1005.sellerchat.notify.KhataReminders.EXTRA_KHATA_NUMBER)
+        intent.removeExtra(com.fahad1005.sellerchat.notify.KhataReminders.EXTRA_KHATA_NAME)
+        intent.removeExtra(com.fahad1005.sellerchat.notify.KhataReminders.EXTRA_KHATA_ENTRY_ID)
+        if (entryId < 0L) return
+        lifecycleScope.launch {
+            val text = vm.khataReminderTextForEntry(entryId, number, name) ?: return@launch
+            val pkg = vm.selectedAppPackage.value
+                ?: vm.settings.defaultAppPackage
+                ?: com.fahad1005.sellerchat.viewmodel.WhatsAppPackages.WHATSAPP
+            vm.openChat(pkg, number, text)
+        }
+    }
+
+    /** Scheduled-message notification deep link (v2.5): the
+     *  notification carries the item id + customer + approved text.
+     *  Tapping it marks the item SENT and opens WhatsApp with the
+     *  text pre-filled — the seller still taps send in WhatsApp.
+     *  The extras are consumed so a later resume doesn't re-fire. */
+    private fun handleScheduledIntent(intent: Intent?) {
+        val id = intent?.getLongExtra(
+            com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_ID, -1L
+        ) ?: -1L
+        if (id < 0L) return
+        val number = intent.getStringExtra(
+            com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_NUMBER
+        ) ?: return
+        val pkg = intent.getStringExtra(
+            com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_PACKAGE
+        ) ?: com.fahad1005.sellerchat.viewmodel.WhatsAppPackages.WHATSAPP
+        val text = intent.getStringExtra(
+            com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_TEXT
+        ) ?: ""
+        intent.removeExtra(com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_ID)
+        intent.removeExtra(com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_NUMBER)
+        intent.removeExtra(com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_PACKAGE)
+        intent.removeExtra(com.fahad1005.sellerchat.notify.ScheduledMessages.EXTRA_SCHEDULED_TEXT)
+        vm.markScheduledSentById(id)
+        vm.openChat(pkg, number, text)
     }
 
     /** Follow-up notification deep link (v2): the notification carries

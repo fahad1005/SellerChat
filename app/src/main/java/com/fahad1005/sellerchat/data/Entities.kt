@@ -15,8 +15,12 @@ enum class TemplateLanguage { EN, UR, ROMAN_UR, HI, TA, TE, MR, FR, ES, AR, ZH }
 enum class TemplatePurpose { PRICE, ORDER, PAYMENT, DELIVERY, OTHER }
 
 /** Where a customer sits in the seller's pipeline. The Recents status
- *  chip cycles INQUIRY → ORDERED → PAID → SHIPPED → INQUIRY. */
-enum class RecentStatus { INQUIRY, ORDERED, PAID, SHIPPED }
+ *  chip cycles INQUIRY → ORDERED → PACKED → SHIPPED → DELIVERED →
+ *  PAID → INQUIRY (v2.6 inserts PACKED and DELIVERED; PAID keeps its
+ *  amount prompt). Old rows stored INQUIRY / ORDERED / PAID /
+ *  SHIPPED by name, so they keep working — enum values are only
+ *  ever added, never renamed or removed. */
+enum class RecentStatus { INQUIRY, ORDERED, PACKED, SHIPPED, DELIVERED, PAID }
 
 @Entity(tableName = "templates")
 data class Template(
